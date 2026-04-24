@@ -17,6 +17,17 @@ public class Packet {
         this.payload = payload;
     }
 
+    public Packet copy() {
+    return new Packet(
+        this.packetId,
+        this.sourceId,
+        this.destinationId,
+        this.ttl,
+        this.timestamp,
+        this.payload.clone()   // IMPORTANT: deep copy
+    );
+}
+
     public String getPacketId() {
         return packetId;
     }
