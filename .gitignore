@@ -158,3 +158,6 @@ firebase-debug.log
 app/build/generated/
 .apt_generated/
 
+# Markdown documentation files
+*.md
+

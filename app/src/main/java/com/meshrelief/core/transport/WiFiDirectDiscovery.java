@@ -1,8 +1,11 @@
 package com.meshrelief.core.transport;
 
+import android.annotation.SuppressLint;
 import android.net.wifi.p2p.WifiP2pDevice;
 import android.net.wifi.p2p.WifiP2pDeviceList;
 import android.net.wifi.p2p.WifiP2pManager;
+import android.os.Handler;
+import android.os.Looper;
 
 import com.meshrelief.core.p2p.Peer;
 import com.meshrelief.core.p2p.PeerDiscovery;
@@ -16,6 +19,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * WiFi Direct Discovery implementation.
  * Discovers nearby WiFi Direct peers and converts them to Peer objects.
  * Integrates with PeerDiscovery interface for mesh network.
+ * Periodically restarts discovery as WiFi Direct discovery stops after ~120 seconds.
  */
 public class WiFiDirectDiscovery implements PeerDiscovery {
     private final WifiP2pManager wifiP2pManager;
@@ -23,6 +27,9 @@ public class WiFiDirectDiscovery implements PeerDiscovery {
     
     private final ConcurrentHashMap<String, Peer> discoveredPeers = new ConcurrentHashMap<>();
     private boolean isDiscovering = false;
+    private Handler discoveryHandler;
+    private static final long DISCOVERY_RESTART_INTERVAL = 100000; // 100 seconds - WiFi Direct discovery lasts ~120 seconds
+    private static final long DISCOVERY_REQUEST_INTERVAL = 90000; // Request peer list every 90 seconds
 
     /**
      * Creates a WiFiDirectDiscovery instance.
@@ -36,6 +43,7 @@ public class WiFiDirectDiscovery implements PeerDiscovery {
         }
         this.wifiP2pManager = wifiP2pManager;
         this.channel = channel;
+        this.discoveryHandler = new Handler(Looper.getMainLooper());
     }
 
     /**
@@ -49,24 +57,88 @@ public class WiFiDirectDiscovery implements PeerDiscovery {
         }
 
         try {
+            // First request - get current peer list
+            requestPeerList();
+            performDiscovery();
+            isDiscovering = true;
+            System.out.println("WiFi Direct discovery started");
+
+            // Schedule periodic discovery restart
+            scheduleDiscoveryRestart();
+
+        } catch (Exception e) {
+            System.err.println("Error starting discovery: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * Performs the actual discovery call.
+     */
+    @SuppressLint("MissingPermission")
+    private void performDiscovery() {
+        try {
             wifiP2pManager.discoverPeers(channel, new WifiP2pManager.ActionListener() {
                 @Override
                 public void onSuccess() {
-                    System.out.println("WiFi Direct discovery started successfully");
-                    isDiscovering = true;
+                    System.out.println("WiFi Direct discovery scan initiated successfully");
                 }
 
                 @Override
                 public void onFailure(int reason) {
                     String reasonStr = getFailureReason(reason);
-                    System.err.println("WiFi Direct discovery failed: " + reasonStr);
-                    isDiscovering = false;
+                    System.err.println("WiFi Direct discovery scan failed: " + reasonStr);
                 }
             });
 
         } catch (Exception e) {
-            System.err.println("Error starting discovery: " + e.getMessage());
+            System.err.println("Error during discovery: " + e.getMessage());
+            e.printStackTrace();
         }
+    }
+
+    /**
+     * Schedules periodic discovery restart.
+     */
+    private void scheduleDiscoveryRestart() {
+        if (!isDiscovering) {
+            return;
+        }
+
+        // Restart discovery every 100 seconds (before it naturally stops at ~120)
+        discoveryHandler.postDelayed(() -> {
+            if (isDiscovering) {
+                System.out.println("Restarting WiFi Direct discovery...");
+                performDiscovery();
+                scheduleDiscoveryRestart();
+            }
+        }, DISCOVERY_RESTART_INTERVAL);
+
+        // Request peer list periodically
+        discoveryHandler.postDelayed(() -> {
+            if (isDiscovering) {
+                System.out.println("Periodically requesting peer list...");
+                requestPeerList();
+                // Reschedule this task
+                schedulePeriodicPeerListRequest();
+            }
+        }, DISCOVERY_REQUEST_INTERVAL);
+    }
+
+    /**
+     * Reschedules periodic peer list request.
+     */
+    private void schedulePeriodicPeerListRequest() {
+        if (!isDiscovering) {
+            return;
+        }
+
+        discoveryHandler.postDelayed(() -> {
+            if (isDiscovering) {
+                requestPeerList();
+                schedulePeriodicPeerListRequest();
+            }
+        }, DISCOVERY_REQUEST_INTERVAL);
     }
 
     /**
@@ -79,6 +151,11 @@ public class WiFiDirectDiscovery implements PeerDiscovery {
         }
 
         try {
+            // Remove all scheduled tasks
+            if (discoveryHandler != null) {
+                discoveryHandler.removeCallbacksAndMessages(null);
+            }
+
             wifiP2pManager.stopPeerDiscovery(channel, new WifiP2pManager.ActionListener() {
                 @Override
                 public void onSuccess() {
@@ -90,13 +167,16 @@ public class WiFiDirectDiscovery implements PeerDiscovery {
                 public void onFailure(int reason) {
                     String reasonStr = getFailureReason(reason);
                     System.err.println("Failed to stop discovery: " + reasonStr);
+                    isDiscovering = false;
                 }
             });
 
         } catch (Exception e) {
             System.err.println("Error stopping discovery: " + e.getMessage());
+            isDiscovering = false;
         }
     }
+
 
     /**
      * Gets currently discovered peers.
@@ -112,6 +192,7 @@ public class WiFiDirectDiscovery implements PeerDiscovery {
      * Requests current peer list from WiFi Direct.
      * Called by broadcast receiver when peers are available.
      */
+    @SuppressLint("MissingPermission")
     public void requestPeerList() {
         try {
             wifiP2pManager.requestPeers(channel, peers -> {

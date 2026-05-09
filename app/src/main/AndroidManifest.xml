@@ -5,6 +5,7 @@
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" />
 
     <!-- Bluetooth Permissions -->
     <uses-permission android:name="android.permission.BLUETOOTH" />
@@ -31,16 +32,6 @@
         <activity android:name=".ui.NetworkMapActivity" android:exported="true" />
         <activity android:name=".ui.PeerListActivity" android:exported="true" />
 
-        <!-- WiFi Direct Broadcast Receiver -->
-        <receiver android:name=".core.transport.WiFiDirectBroadcastReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.net.wifi.p2p.STATE_CHANGED" />
-                <action android:name="android.net.wifi.p2p.PEERS_CHANGED" />
-                <action android:name="android.net.wifi.p2p.CONNECTION_STATE_CHANGE" />
-                <action android:name="android.net.wifi.p2p.THIS_DEVICE_CHANGED" />
-            </intent-filter>
-        </receiver>
 
         <!-- Mesh Service -->
         <service android:name=".service.MeshService" android:exported="false" />

@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.net.wifi.p2p.WifiP2pManager;
+import android.os.Build;
 
 /**
  * WiFi Direct Broadcast Receiver.
@@ -15,6 +16,15 @@ public class WiFiDirectBroadcastReceiver extends BroadcastReceiver {
     private final WiFiDirectDiscovery discoveryManager;
     private final WiFiDirectConnectionManager connectionManager;
     private boolean isRegistered = false;
+
+    /**
+     * Default constructor for Android manifest instantiation.
+     */
+    public WiFiDirectBroadcastReceiver() {
+        this.wifiDirectManager = null;
+        this.discoveryManager = null;
+        this.connectionManager = null;
+    }
 
     /**
      * Creates a WiFiDirectBroadcastReceiver instance.
@@ -52,12 +62,24 @@ public class WiFiDirectBroadcastReceiver extends BroadcastReceiver {
             intentFilter.addAction(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION);
             intentFilter.addAction(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION);
 
-            context.registerReceiver(this, intentFilter);
+            // Use the appropriate flag for API 31+ (0x0000002 = RECEIVER_EXPORTED)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                // API 33+ - use context method
+                context.registerReceiver(this, intentFilter, 0x0000002); // RECEIVER_EXPORTED
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                // API 31-32 - use int flag
+                context.registerReceiver(this, intentFilter, 0x0000002); // RECEIVER_EXPORTED
+            } else {
+                // API 30 and below
+                context.registerReceiver(this, intentFilter);
+            }
+
             isRegistered = true;
             System.out.println("WiFiDirectBroadcastReceiver registered");
 
         } catch (Exception e) {
             System.err.println("Error registering receiver: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
@@ -136,7 +158,7 @@ public class WiFiDirectBroadcastReceiver extends BroadcastReceiver {
     private void handleConnectionChanged(Intent intent) {
         android.net.NetworkInfo networkInfo = intent.getParcelableExtra(WifiP2pManager.EXTRA_NETWORK_INFO);
 
-        if (networkInfo != null && networkInfo.isConnected()) {
+        if (networkInfo != null && networkInfo.isConnectedOrConnecting()) {
             System.out.println("WiFi Direct connected");
             // Connection established, update connection info
             requestConnectionInfo();

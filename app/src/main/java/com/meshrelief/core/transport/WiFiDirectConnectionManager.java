@@ -1,5 +1,6 @@
 package com.meshrelief.core.transport;
 
+import android.annotation.SuppressLint;
 import android.net.wifi.p2p.WifiP2pConfig;
 import android.net.wifi.p2p.WifiP2pInfo;
 import android.net.wifi.p2p.WifiP2pManager;
@@ -34,6 +35,7 @@ public class WiFiDirectConnectionManager {
      *
      * @param deviceAddress MAC address of the peer device
      */
+    @SuppressLint("MissingPermission")
     public void connect(String deviceAddress) {
         if (deviceAddress == null || deviceAddress.isEmpty()) {
             throw new IllegalArgumentException("Device address cannot be null or empty");
@@ -66,6 +68,7 @@ public class WiFiDirectConnectionManager {
     /**
      * Disconnects from a WiFi Direct peer.
      */
+    @SuppressLint("MissingPermission")
     public void disconnect() {
         try {
             wifiP2pManager.cancelConnect(channel, new WifiP2pManager.ActionListener() {
@@ -90,6 +93,7 @@ public class WiFiDirectConnectionManager {
     /**
      * Removes the WiFi Direct group (Group Owner operation).
      */
+    @SuppressLint("MissingPermission")
     public void removeGroup() {
         try {
             wifiP2pManager.removeGroup(channel, new WifiP2pManager.ActionListener() {
