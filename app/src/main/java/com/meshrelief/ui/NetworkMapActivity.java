@@ -1,11 +1,17 @@
 package com.meshrelief.ui;
 
+import android.Manifest;
 import android.app.Activity;
+import android.content.pm.PackageManager;
+import android.os.Build;
+import android.widget.Toast;
 import android.net.wifi.p2p.WifiP2pManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.widget.TextView;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 
 import com.meshrelief.R;
 import com.meshrelief.core.p2p.Peer;
@@ -14,8 +20,10 @@ import com.meshrelief.core.transport.TransportManager;
 import com.meshrelief.core.transport.WifiDirectTransport;
 
 import java.util.List;
+import java.util.ArrayList;
 
 public class NetworkMapActivity extends Activity {
+    private static final int REQUEST_LOCATION_PERMISSION = 1001;
     private TextView networkMapInfo;
     private Handler updateHandler;
     private WifiDirectTransport transport;
@@ -31,6 +39,12 @@ public class NetworkMapActivity extends Activity {
 
         networkMapInfo = findViewById(R.id.networkMapInfo);
         updateHandler = new Handler(Looper.getMainLooper());
+
+        // Ensure required runtime permissions are present before using WiFi Direct
+        if (!checkPermissions()) {
+            // permission request started; result handled in onRequestPermissionsResult
+            return;
+        }
 
         // Get transport from singleton TransportManager (shared across all activities)
         try {
@@ -109,7 +123,80 @@ public class NetworkMapActivity extends Activity {
     protected void onResume() {
         super.onResume();
         isActivityRunning = true;
+        // Re-acquire shared transport in case it was initialized after this activity was created
+        try {
+            TransportManager transportManager = TransportManager.getInstance();
+            if (transport == null) {
+                transport = transportManager.getTransport();
+                peerManager = transportManager.getPeerManager();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
         startNetworkUpdates();
+    }
+
+    /**
+     * Request and check runtime permissions required for WiFi Direct.
+     */
+    private boolean checkPermissions() {
+        List<String> permissionsNeeded = new ArrayList<>();
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            permissionsNeeded.add(Manifest.permission.ACCESS_FINE_LOCATION);
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CHANGE_WIFI_STATE) != PackageManager.PERMISSION_GRANTED) {
+            permissionsNeeded.add(Manifest.permission.CHANGE_WIFI_STATE);
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_WIFI_STATE) != PackageManager.PERMISSION_GRANTED) {
+            permissionsNeeded.add(Manifest.permission.ACCESS_WIFI_STATE);
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.INTERNET) != PackageManager.PERMISSION_GRANTED) {
+            permissionsNeeded.add(Manifest.permission.INTERNET);
+        }
+
+        // Android 13+ requires NEARBY_WIFI_DEVICES permission
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.NEARBY_WIFI_DEVICES) != PackageManager.PERMISSION_GRANTED) {
+                permissionsNeeded.add(Manifest.permission.NEARBY_WIFI_DEVICES);
+            }
+        }
+
+        if (!permissionsNeeded.isEmpty()) {
+            ActivityCompat.requestPermissions(this, permissionsNeeded.toArray(new String[0]), REQUEST_LOCATION_PERMISSION);
+            return false;
+        }
+        return true;
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQUEST_LOCATION_PERMISSION) {
+            boolean allGranted = true;
+            for (int result : grantResults) {
+                if (result != PackageManager.PERMISSION_GRANTED) {
+                    allGranted = false;
+                    break;
+                }
+            }
+            if (allGranted) {
+                // Re-acquire transport now that permissions are available
+                try {
+                    TransportManager transportManager = TransportManager.getInstance();
+                    if (transport == null) {
+                        transport = transportManager.getTransport();
+                        peerManager = transportManager.getPeerManager();
+                    }
+                    startNetworkUpdates();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            } else {
+                networkMapInfo.setText("Permissions denied - cannot use WiFi Direct");
+                Toast.makeText(this, "Location and WiFi permissions are required for WiFi Direct", Toast.LENGTH_LONG).show();
+            }
+        }
     }
 
     @Override
@@ -117,8 +204,5 @@ public class NetworkMapActivity extends Activity {
         super.onDestroy();
         isActivityRunning = false;
         updateHandler.removeCallbacksAndMessages(null);
-        if (transport != null) {
-            transport.stop();
-        }
     }
 }

@@ -187,9 +187,9 @@ public class WiFiDirectBroadcastReceiver extends BroadcastReceiver {
      */
     private void requestConnectionInfo() {
         try {
-            // This would need access to WifiP2pManager.Channel from manager
-            // Connection info will be set via connectionManager.setConnectionInfo()
-            System.out.println("Requesting connection information");
+            // Delegate to WiFiDirectManager which has access to WifiP2pManager and Channel
+            System.out.println("Requesting connection information via WiFiDirectManager");
+            wifiDirectManager.requestConnectionInfo();
 
         } catch (Exception e) {
             System.err.println("Error requesting connection info: " + e.getMessage());

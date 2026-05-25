@@ -250,6 +250,46 @@ public class WiFiDirectManager {
     }
 
     /**
+     * Requests current connection info from the framework and updates internal state.
+     * This will call WifiP2pManager.requestConnectionInfo and populate connectionManager
+     * and device-to-IP mappings when available.
+     */
+    public void requestConnectionInfo() {
+        try {
+            if (wifiP2pManager == null || channel == null || connectionManager == null) {
+                System.err.println("Cannot request connection info - components not initialized");
+                return;
+            }
+
+            wifiP2pManager.requestConnectionInfo(channel, info -> {
+                try {
+                    connectionManager.setConnectionInfo(info);
+
+                    // Map connected peer ID to known IP address when possible
+                    String connectedPeerId = connectionManager.getConnectedPeerId();
+                    if (connectedPeerId != null && info != null && info.groupOwnerAddress != null) {
+                        // If this device is not the group owner, groupOwnerAddress is the peer's IP
+                        String peerIp = info.groupOwnerAddress.getHostAddress();
+                        if (!info.isGroupOwner) {
+                            setPeerIpAddress(connectedPeerId, peerIp);
+                            System.out.println("Mapped peer " + connectedPeerId + " -> " + peerIp);
+                        } else {
+                            // If we are group owner, the peer's IP is not directly available here.
+                            // We'll keep groupOwnerAddress mapping for consistency.
+                            setPeerIpAddress(connectedPeerId, peerIp);
+                        }
+                    }
+                } catch (Exception e) {
+                    System.err.println("Error handling connection info: " + e.getMessage());
+                }
+            });
+
+        } catch (Exception e) {
+            System.err.println("Error requesting connection info: " + e.getMessage());
+        }
+    }
+
+    /**
      * Checks if currently in a WiFi Direct group.
      *
      * @return true if in group
