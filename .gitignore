@@ -161,3 +161,6 @@ app/build/generated/
 # Markdown documentation files
 *.md
 
+.classpath
+.project
+
