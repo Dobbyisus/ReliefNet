@@ -28,14 +28,39 @@ public class WiFiDirectManager {
     }
 
     public void discoverPeers() {
-        if (ActivityCompat.checkSelfPermission(
-                context,
-                Manifest.permission.ACCESS_FINE_LOCATION)
-                != PackageManager.PERMISSION_GRANTED) {
+        System.out.println("DISCOVER PEERS ENTERED");
 
-            System.out.println("Location permission not granted");
-            return;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+
+            if (ActivityCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.NEARBY_WIFI_DEVICES)
+                    != PackageManager.PERMISSION_GRANTED) {
+
+                System.out.println("Nearby WiFi permission not granted");
+                return;
+            }
+
+        } else {
+
+            if (ActivityCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.ACCESS_FINE_LOCATION)
+                    != PackageManager.PERMISSION_GRANTED) {
+
+                System.out.println("Location permission not granted");
+                return;
+            }
         }
+
+        System.out.println(
+                "Manager = " + (manager != null)
+        );
+
+        System.out.println(
+                "Channel = " + (channel != null)
+        );
+
 
         manager.discoverPeers(channel,
                 new WifiP2pManager.ActionListener() {
@@ -53,35 +78,73 @@ public class WiFiDirectManager {
     }
 
     public void connect(WifiP2pDevice device) {
+
+        System.out.println("CONNECT ENTERED");
+
+        boolean permissionGranted;
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
 
-            if (ActivityCompat.checkSelfPermission(
-                    context,
-                    Manifest.permission.NEARBY_WIFI_DEVICES)
-                    != PackageManager.PERMISSION_GRANTED) {
+            permissionGranted =
+                    ActivityCompat.checkSelfPermission(
+                            context,
+                            Manifest.permission.NEARBY_WIFI_DEVICES)
+                            == PackageManager.PERMISSION_GRANTED;
 
-                System.out.println("Nearby WiFi Devices permission not granted");
-                return;
-            }
+        } else {
+
+            permissionGranted =
+                    ActivityCompat.checkSelfPermission(
+                            context,
+                            Manifest.permission.ACCESS_FINE_LOCATION)
+                            == PackageManager.PERMISSION_GRANTED;
         }
+
+        if (!permissionGranted) {
+
+            System.out.println("Required permission not granted");
+            return;
+        }
+
+        if (device == null) {
+
+            System.out.println("Device is null");
+            return;
+        }
+
+        System.out.println(
+                "Attempting connection to: "
+                        + device.deviceName
+                        + " | "
+                        + device.deviceAddress
+        );
 
         WifiP2pConfig config = new WifiP2pConfig();
 
         config.deviceAddress = device.deviceAddress;
 
-        manager.connect(channel, config,
+        manager.connect(
+                channel,
+                config,
                 new WifiP2pManager.ActionListener() {
 
                     @Override
                     public void onSuccess() {
-                        System.out.println("Connection initiated");
+
+                        System.out.println(
+                                "Connection request accepted"
+                        );
                     }
 
                     @Override
                     public void onFailure(int reason) {
-                        System.out.println("Connection failed: " + reason);
+
+                        System.out.println(
+                                "Connection failed: " + reason
+                        );
                     }
-                });
+                }
+        );
     }
 
     public void disconnect() {
