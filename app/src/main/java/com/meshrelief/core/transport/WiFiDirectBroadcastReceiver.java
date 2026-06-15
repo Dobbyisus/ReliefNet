@@ -16,13 +16,19 @@ public class WiFiDirectBroadcastReceiver extends BroadcastReceiver {
 
     private WifiP2pManager manager;
     private WifiP2pManager.Channel channel;
+    private WiFiDirectManager wifiDirectManager;
+    private PeerDiscoveryListener listener;
 
     public WiFiDirectBroadcastReceiver(
             WifiP2pManager manager,
-            WifiP2pManager.Channel channel) {
+            WifiP2pManager.Channel channel,
+            WiFiDirectManager wifiDirectManager,
+            PeerDiscoveryListener listener) {
 
         this.manager = manager;
         this.channel = channel;
+        this.wifiDirectManager = wifiDirectManager;
+        this.listener = listener;
     }
 
     @Override
@@ -33,7 +39,6 @@ public class WiFiDirectBroadcastReceiver extends BroadcastReceiver {
         System.out.println(
                 "Broadcast received: " + action
         );
-
 
         if (WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION
                 .equals(action)) {
@@ -57,7 +62,6 @@ public class WiFiDirectBroadcastReceiver extends BroadcastReceiver {
                 );
             }
         }
-
 
         else if (WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION
                 .equals(action)) {
@@ -117,10 +121,16 @@ public class WiFiDirectBroadcastReceiver extends BroadcastReceiver {
                                             + device.deviceAddress
                             );
                         }
+
+                        if (listener != null) {
+
+                            listener.onPeersDiscovered(
+                                    peers.getDeviceList()
+                            );
+                        }
                     }
             );
         }
-
 
         else if (WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION
                 .equals(action)) {
@@ -136,6 +146,8 @@ public class WiFiDirectBroadcastReceiver extends BroadcastReceiver {
                 System.out.println(
                         "Connected to peer"
                 );
+
+                wifiDirectManager.requestConnectionInfo();
 
             } else {
 

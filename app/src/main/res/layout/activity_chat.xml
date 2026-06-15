@@ -1,74 +1,105 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="16dp">
+    android:padding="8dp">
 
+    <!-- Header -->
     <TextView
-        android:id="@+id/statusText"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="MeshRelief - Initializing..."
-        android:textSize="16sp"
-        android:paddingBottom="16dp" />
+        android:text="Mesh Relief - P2P Chat"
+        android:textSize="24sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:paddingBottom="8dp" />
 
-    <ListView
-        android:id="@+id/messageList"
+    <!-- Peers Section -->
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:divider="@android:color/darker_gray"
-        android:dividerHeight="1dp" />
+        android:orientation="vertical">
 
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Available Peers (tap to connect)"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:paddingBottom="4dp" />
+
+        <ListView
+            android:id="@+id/peerListView"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:divider="@android:color/darker_gray"
+            android:dividerHeight="1dp" />
+    </LinearLayout>
+
+    <!-- Connection Status -->
+    <TextView
+        android:id="@+id/connectionStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Status: Waiting..."
+        android:textSize="14sp"
+        android:textColor="#FF0000"
+        android:paddingVertical="8dp"
+        android:background="#EEEEEE" />
+
+    <!-- Messages Section -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1.5"
+        android:orientation="vertical">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Messages"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:paddingBottom="4dp" />
+
+        <ListView
+            android:id="@+id/messagesListView"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:divider="@android:color/darker_gray"
+            android:dividerHeight="1dp" />
+    </LinearLayout>
+
+    <!-- Message Input Area -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal">
+        android:orientation="horizontal"
+        android:paddingTop="8dp">
 
         <EditText
             android:id="@+id/messageInput"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:hint="Type message..."
-            android:maxLines="3" />
+            android:hint="Type your message..."
+            android:inputType="text"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="8dp"
+            android:background="#F0F0F0" />
 
         <Button
             android:id="@+id/sendButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Send" />
-
-    </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:layout_marginTop="8dp">
-
-        <Button
-            android:id="@+id/peerListButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Peers" />
-
-        <Button
-            android:id="@+id/networkMapButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Network" />
-
-        <Button
-            android:id="@+id/refreshButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Refresh" />
-
+            android:text="Send"
+            android:paddingHorizontal="16dp"
+            android:layout_marginStart="8dp" />
     </LinearLayout>
 
 </LinearLayout>
