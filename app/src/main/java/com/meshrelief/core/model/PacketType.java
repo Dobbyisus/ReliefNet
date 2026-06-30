@@ -2,7 +2,11 @@ package com.meshrelief.core.model;
 
 public enum PacketType {
     CHAT((byte) 0x01),
-    HELLO((byte) 0x02);
+    HELLO((byte) 0x02),
+    MEMBER_SNAPSHOT((byte) 0x03),
+    FORWARD((byte) 0x04),
+    ACK((byte) 0x05),
+    ROUTE_ANNOUNCE((byte) 0x06);
 
     private final byte code;
 

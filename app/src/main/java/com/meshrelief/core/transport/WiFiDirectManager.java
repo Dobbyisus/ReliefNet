@@ -37,69 +37,52 @@ public class WiFiDirectManager
     }
 
     public void discoverPeers() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ActivityCompat.checkSelfPermission(
-                    context,
-                    Manifest.permission.NEARBY_WIFI_DEVICES)
-                    != PackageManager.PERMISSION_GRANTED) {
-                return;
-            }
-        } else {
-            if (ActivityCompat.checkSelfPermission(
-                    context,
-                    Manifest.permission.ACCESS_FINE_LOCATION)
-                    != PackageManager.PERMISSION_GRANTED) {
-                return;
-            }
+        discoverPeers(new WifiP2pManager.ActionListener() {
+            @Override
+            public void onSuccess() {}
+
+            @Override
+            public void onFailure(int reason) {}
+        });
+    }
+
+    public void discoverPeers(WifiP2pManager.ActionListener listener) {
+        if (!hasRequiredPermission()) {
+            listener.onFailure(-1);
+            return;
         }
 
-        manager.discoverPeers(
-                channel,
-                new WifiP2pManager.ActionListener() {
-                    @Override
-                    public void onSuccess() {}
-
-                    @Override
-                    public void onFailure(int reason) {}
-                }
-        );
+        manager.discoverPeers(channel, listener);
     }
 
     public void connect(WifiP2pDevice device) {
-        boolean permissionGranted;
+        connect(device, new WifiP2pManager.ActionListener() {
+            @Override
+            public void onSuccess() {}
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            permissionGranted =
-                    ActivityCompat.checkSelfPermission(
-                            context,
-                            Manifest.permission.NEARBY_WIFI_DEVICES)
-                            == PackageManager.PERMISSION_GRANTED;
-        } else {
-            permissionGranted =
-                    ActivityCompat.checkSelfPermission(
-                            context,
-                            Manifest.permission.ACCESS_FINE_LOCATION)
-                            == PackageManager.PERMISSION_GRANTED;
-        }
+            @Override
+            public void onFailure(int reason) {}
+        });
+    }
 
-        if (!permissionGranted || device == null) {
+    public void connect(WifiP2pDevice device, WifiP2pManager.ActionListener listener) {
+        if (!hasRequiredPermission() || device == null) {
+            listener.onFailure(-1);
             return;
         }
 
         WifiP2pConfig config = new WifiP2pConfig();
         config.deviceAddress = device.deviceAddress;
+        manager.connect(channel, config, listener);
+    }
 
-        manager.connect(
-                channel,
-                config,
-                new WifiP2pManager.ActionListener() {
-                    @Override
-                    public void onSuccess() {}
+    public void createGroup(WifiP2pManager.ActionListener listener) {
+        if (!hasRequiredPermission()) {
+            listener.onFailure(-1);
+            return;
+        }
 
-                    @Override
-                    public void onFailure(int reason) {}
-                }
-        );
+        manager.createGroup(channel, listener);
     }
 
     public void requestConnectionInfo() {
@@ -108,14 +91,11 @@ public class WiFiDirectManager
 
     @Override
     public void onConnectionInfoAvailable(WifiP2pInfo info) {
-        if (connectionHandler != null) {
-            connectionHandler.initialize(info);
-        }
+        connectionHandler.initialize(info);
     }
 
     public void disconnect() {
         connectionHandler.cleanup();
-
         manager.removeGroup(
                 channel,
                 new WifiP2pManager.ActionListener() {
@@ -126,6 +106,10 @@ public class WiFiDirectManager
                     public void onFailure(int reason) {}
                 }
         );
+    }
+
+    public void handleGroupDisconnected() {
+        connectionHandler.cleanup();
     }
 
     public WifiP2pManager getManager() {
@@ -145,6 +129,16 @@ public class WiFiDirectManager
         connectionHandler.sendPacket(packet);
     }
 
+    @Override
+    public void sendToNode(Packet packet, String nodeId) {
+        connectionHandler.sendToNode(packet, nodeId);
+    }
+
+    @Override
+    public void broadcastToGroup(Packet packet, String excludeNodeId) {
+        connectionHandler.broadcastToGroup(packet, excludeNodeId);
+    }
+
     public boolean isConnectionReady() {
         return connectionHandler.isReady();
     }
@@ -152,5 +146,19 @@ public class WiFiDirectManager
     @Override
     public boolean isReady() {
         return isConnectionReady();
+    }
+
+    private boolean hasRequiredPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            return ActivityCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.NEARBY_WIFI_DEVICES)
+                    == PackageManager.PERMISSION_GRANTED;
+        }
+
+        return ActivityCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_FINE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED;
     }
 }

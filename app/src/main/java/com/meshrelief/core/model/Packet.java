@@ -4,6 +4,8 @@ public class Packet {
     private final String packetId;      // unique (for SeenCache)
     private final String sourceId;
     private final String destinationId; // null = broadcast
+    private final String sourceGroupId;
+    private final String destinationGroupId;
     private int ttl;
     private final long timestamp;
     private final PacketType type;
@@ -13,6 +15,8 @@ public class Packet {
             String packetId,
             String sourceId,
             String destinationId,
+            String sourceGroupId,
+            String destinationGroupId,
             int ttl,
             long timestamp,
             PacketType type,
@@ -21,6 +25,8 @@ public class Packet {
         this.packetId = packetId;
         this.sourceId = sourceId;
         this.destinationId = destinationId;
+        this.sourceGroupId = sourceGroupId;
+        this.destinationGroupId = destinationGroupId;
         this.ttl = ttl;
         this.timestamp = timestamp;
         this.type = type;
@@ -32,6 +38,8 @@ public class Packet {
                 this.packetId,
                 this.sourceId,
                 this.destinationId,
+                this.sourceGroupId,
+                this.destinationGroupId,
                 this.ttl,
                 this.timestamp,
                 this.type,
@@ -47,8 +55,24 @@ public class Packet {
         return sourceId;
     }
 
+    public String getSourceNodeId() {
+        return sourceId;
+    }
+
     public String getDestinationId() {
         return destinationId;
+    }
+
+    public String getDestinationNodeId() {
+        return destinationId;
+    }
+
+    public String getSourceGroupId() {
+        return sourceGroupId;
+    }
+
+    public String getDestinationGroupId() {
+        return destinationGroupId;
     }
 
     public int getTtl() {

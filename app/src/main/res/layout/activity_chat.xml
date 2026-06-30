@@ -4,29 +4,110 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="8dp">
+    android:padding="12dp">
 
-    <!-- Header -->
     <TextView
+        android:id="@+id/titleText"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Mesh Relief - P2P Chat"
+        android:text="ReliefNet"
         android:textSize="24sp"
         android:textStyle="bold"
         android:gravity="center"
         android:paddingBottom="8dp" />
 
-    <!-- Peers Section -->
+    <TextView
+        android:id="@+id/connectionStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Status: Not connected"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:textColor="#CC0000"
+        android:paddingBottom="2dp" />
+
+    <TextView
+        android:id="@+id/roleStatusText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Role: Group Member"
+        android:textSize="13sp"
+        android:paddingBottom="2dp" />
+
+    <TextView
+        android:id="@+id/groupInfoText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Group: Not assigned"
+        android:textSize="13sp"
+        android:paddingBottom="2dp" />
+
+    <TextView
+        android:id="@+id/memberCountText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Members: 0"
+        android:textSize="13sp"
+        android:paddingBottom="8dp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingBottom="8dp">
+
+        <Button
+            android:id="@+id/hostGroupButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Host Group" />
+
+        <Button
+            android:id="@+id/discoverGroupsButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:text="Discover Groups" />
+
+        <Button
+            android:id="@+id/leaveGroupButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:text="Leave Group" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/currentRecipientText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Talking to: All"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:paddingBottom="4dp" />
+
+    <Button
+        android:id="@+id/talkToAllButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Talk To All"
+        android:paddingHorizontal="12dp" />
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:orientation="vertical">
+        android:orientation="vertical"
+        android:paddingTop="8dp">
 
         <TextView
+            android:id="@+id/listSectionTitle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Available Peers (tap to connect)"
+            android:text="Nearby Hosts"
             android:textSize="16sp"
             android:textStyle="bold"
             android:paddingBottom="4dp" />
@@ -40,23 +121,12 @@
             android:dividerHeight="1dp" />
     </LinearLayout>
 
-    <!-- Connection Status -->
-    <TextView
-        android:id="@+id/connectionStatus"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Status: Waiting..."
-        android:textSize="14sp"
-        android:textColor="#FF0000"
-        android:paddingVertical="8dp"
-        android:background="#EEEEEE" />
-
-    <!-- Messages Section -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1.5"
-        android:orientation="vertical">
+        android:layout_weight="1.2"
+        android:orientation="vertical"
+        android:paddingTop="8dp">
 
         <TextView
             android:layout_width="match_parent"
@@ -75,7 +145,6 @@
             android:dividerHeight="1dp" />
     </LinearLayout>
 
-    <!-- Message Input Area -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

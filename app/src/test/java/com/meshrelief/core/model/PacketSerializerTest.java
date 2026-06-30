@@ -15,6 +15,8 @@ public class PacketSerializerTest {
                 "packet-1",
                 "source-1",
                 "dest-1",
+                "group-1",
+                "group-1",
                 4,
                 123456789L,
                 PacketType.CHAT,
@@ -25,8 +27,10 @@ public class PacketSerializerTest {
         Packet deserialized = PacketSerializer.deserialize(serialized);
 
         assertEquals(packet.getPacketId(), deserialized.getPacketId());
-        assertEquals(packet.getSourceId(), deserialized.getSourceId());
-        assertEquals(packet.getDestinationId(), deserialized.getDestinationId());
+        assertEquals(packet.getSourceNodeId(), deserialized.getSourceNodeId());
+        assertEquals(packet.getDestinationNodeId(), deserialized.getDestinationNodeId());
+        assertEquals(packet.getSourceGroupId(), deserialized.getSourceGroupId());
+        assertEquals(packet.getDestinationGroupId(), deserialized.getDestinationGroupId());
         assertEquals(packet.getTtl(), deserialized.getTtl());
         assertEquals(packet.getTimestamp(), deserialized.getTimestamp());
         assertEquals(packet.getType(), deserialized.getType());
@@ -34,22 +38,26 @@ public class PacketSerializerTest {
     }
 
     @Test
-    public void serializeDeserialize_helloPacket_roundTrips() throws Exception {
+    public void serializeDeserialize_memberSnapshotPacket_roundTrips() throws Exception {
         Packet packet = new Packet(
                 "packet-2",
                 "source-2",
                 null,
+                "group-2",
+                "group-2",
                 4,
                 987654321L,
-                PacketType.HELLO,
-                "device".getBytes(StandardCharsets.UTF_8)
+                PacketType.MEMBER_SNAPSHOT,
+                "snapshot".getBytes(StandardCharsets.UTF_8)
         );
 
         byte[] serialized = PacketSerializer.serialize(packet);
         Packet deserialized = PacketSerializer.deserialize(serialized);
 
         assertEquals(packet.getType(), deserialized.getType());
-        assertEquals(packet.getDestinationId(), deserialized.getDestinationId());
+        assertEquals(packet.getDestinationNodeId(), deserialized.getDestinationNodeId());
+        assertEquals(packet.getSourceGroupId(), deserialized.getSourceGroupId());
+        assertEquals(packet.getDestinationGroupId(), deserialized.getDestinationGroupId());
         assertArrayEquals(packet.getPayload(), deserialized.getPayload());
     }
 
@@ -64,6 +72,8 @@ public class PacketSerializerTest {
                 "packet-3",
                 "",
                 "dest-1",
+                "group-1",
+                "group-1",
                 4,
                 1L,
                 PacketType.CHAT,
@@ -80,6 +90,8 @@ public class PacketSerializerTest {
                 "packet-4",
                 "source-4",
                 "dest-4",
+                "group-4",
+                "group-4",
                 4,
                 1L,
                 PacketType.CHAT,

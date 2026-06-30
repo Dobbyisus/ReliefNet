@@ -8,116 +8,200 @@ import java.io.DataOutputStream;
 import java.io.EOFException;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Bidirectional server socket for 2-device P2P.
- * Accepts one client connection and can send/receive packets.
+ * GO-side multi-client server for same-group routed chat.
  */
 public class SocketServer {
 
     private static final int PORT = 8888;
 
-    private ServerSocket serverSocket;
-    private Socket clientSocket;
-    private DataOutputStream writer;
-    private DataInputStream reader;
-    private boolean isRunning = false;
-    private Thread serverThread;
     private final MessageListener messageListener;
+    private final Map<String, ClientSession> sessionsByConnectionId = new ConcurrentHashMap<>();
+    private final Map<String, ClientSession> sessionsByNodeId = new ConcurrentHashMap<>();
+
+    private ServerSocket serverSocket;
+    private boolean isRunning = false;
+    private Thread acceptThread;
 
     public SocketServer(MessageListener messageListener) {
         this.messageListener = messageListener;
     }
 
-    /**
-     * Starts the server socket in a background thread.
-     */
     public void start() {
         if (isRunning) {
             return;
         }
 
-        serverThread = new Thread(() -> {
+        acceptThread = new Thread(() -> {
             try {
                 serverSocket = new ServerSocket(PORT);
                 isRunning = true;
-
-                clientSocket = serverSocket.accept();
-                writer = new DataOutputStream(clientSocket.getOutputStream());
-                reader = new DataInputStream(clientSocket.getInputStream());
 
                 if (messageListener != null) {
                     messageListener.onConnectionEstablished();
                 }
 
                 while (isRunning) {
-                    int packetLength = reader.readInt();
-                    byte[] packetBytes = new byte[packetLength];
-                    reader.readFully(packetBytes);
-                    Packet packet = PacketSerializer.deserialize(packetBytes);
-
-                    if (messageListener != null) {
-                        messageListener.onPacketReceived(packet, packet.getSourceId());
-                    }
+                    Socket socket = serverSocket.accept();
+                    ClientSession session = new ClientSession(
+                            UUID.randomUUID().toString(),
+                            socket
+                    );
+                    sessionsByConnectionId.put(session.connectionId, session);
+                    session.start();
                 }
-            } catch (EOFException e) {
-                // Peer closed connection.
             } catch (Exception e) {
-                if (messageListener != null) {
+                if (isRunning && messageListener != null) {
                     messageListener.onError(e.getMessage());
                 }
             } finally {
-                if (messageListener != null) {
-                    messageListener.onConnectionClosed();
-                }
                 stop();
             }
         });
 
-        serverThread.setDaemon(true);
-        serverThread.start();
+        acceptThread.setDaemon(true);
+        acceptThread.start();
     }
 
-    /**
-     * Sends a packet to the connected client.
-     */
     public void sendPacket(Packet packet) {
-        new Thread(() -> {
-            if (!isRunning || writer == null) {
-                return;
-            }
-
-            try {
-                byte[] packetBytes = PacketSerializer.serialize(packet);
-                synchronized (writer) {
-                    writer.writeInt(packetBytes.length);
-                    writer.write(packetBytes);
-                    writer.flush();
-                }
-            } catch (Exception e) {
-                // Ignore send failures; connection lifecycle handles user-facing errors.
-            }
-        }).start();
+        if (packet.getDestinationNodeId() != null) {
+            sendToNode(packet, packet.getDestinationNodeId());
+        } else {
+            broadcastToGroup(packet, null);
+        }
     }
 
-    /**
-     * Stops the server socket.
-     */
+    public void sendToNode(Packet packet, String nodeId) {
+        ClientSession session = sessionsByNodeId.get(nodeId);
+        if (session != null) {
+            session.send(packet);
+        }
+    }
+
+    public void broadcastToGroup(Packet packet, String excludeNodeId) {
+        for (ClientSession session : sessionsByConnectionId.values()) {
+            if (excludeNodeId != null && excludeNodeId.equals(session.boundNodeId)) {
+                continue;
+            }
+            session.send(packet);
+        }
+    }
+
     public void stop() {
         isRunning = false;
+
+        for (ClientSession session : sessionsByConnectionId.values()) {
+            session.close();
+        }
+
+        sessionsByConnectionId.clear();
+        sessionsByNodeId.clear();
+
         try {
-            if (reader != null) reader.close();
-            if (writer != null) writer.close();
-            if (clientSocket != null && !clientSocket.isClosed()) clientSocket.close();
-            if (serverSocket != null && !serverSocket.isClosed()) serverSocket.close();
+            if (serverSocket != null && !serverSocket.isClosed()) {
+                serverSocket.close();
+            }
         } catch (Exception e) {}
+
+        if (messageListener != null) {
+            messageListener.onConnectionClosed();
+        }
+    }
+
+    public boolean hasConnectedClients() {
+        return !sessionsByConnectionId.isEmpty();
     }
 
     public boolean isRunning() {
         return isRunning;
     }
 
-    public boolean isClientConnected() {
-        return clientSocket != null && !clientSocket.isClosed();
+    private final class ClientSession {
+        private final String connectionId;
+        private final Socket socket;
+        private DataOutputStream writer;
+        private DataInputStream reader;
+        private Thread readThread;
+        private String boundNodeId;
+
+        private ClientSession(String connectionId, Socket socket) {
+            this.connectionId = connectionId;
+            this.socket = socket;
+        }
+
+        private void start() {
+            readThread = new Thread(() -> {
+                try {
+                    writer = new DataOutputStream(socket.getOutputStream());
+                    reader = new DataInputStream(socket.getInputStream());
+
+                    while (isRunning && !socket.isClosed()) {
+                        int packetLength = reader.readInt();
+                        byte[] packetBytes = new byte[packetLength];
+                        reader.readFully(packetBytes);
+                        Packet packet = PacketSerializer.deserialize(packetBytes);
+
+                        if (packet.getSourceNodeId() != null) {
+                            boundNodeId = packet.getSourceNodeId();
+                            sessionsByNodeId.put(boundNodeId, this);
+                        }
+
+                        if (messageListener != null) {
+                            messageListener.onPacketReceived(packet, packet.getSourceNodeId());
+                        }
+                    }
+                } catch (EOFException e) {
+                    // Client disconnected.
+                } catch (Exception e) {
+                    if (isRunning && messageListener != null) {
+                        messageListener.onError(e.getMessage());
+                    }
+                } finally {
+                    if (boundNodeId != null) {
+                        sessionsByNodeId.remove(boundNodeId);
+                        if (messageListener != null) {
+                            messageListener.onPeerDisconnected(boundNodeId);
+                        }
+                    }
+
+                    sessionsByConnectionId.remove(connectionId);
+                    close();
+                }
+            });
+
+            readThread.setDaemon(true);
+            readThread.start();
+        }
+
+        private void send(Packet packet) {
+            if (writer == null) {
+                return;
+            }
+
+            new Thread(() -> {
+                try {
+                    byte[] packetBytes = PacketSerializer.serialize(packet);
+                    synchronized (writer) {
+                        writer.writeInt(packetBytes.length);
+                        writer.write(packetBytes);
+                        writer.flush();
+                    }
+                } catch (Exception e) {
+                    // Ignore send failures; disconnect handling will clean up state.
+                }
+            }).start();
+        }
+
+        private void close() {
+            try {
+                if (reader != null) reader.close();
+                if (writer != null) writer.close();
+                if (socket != null && !socket.isClosed()) socket.close();
+            } catch (Exception e) {}
+        }
     }
 }

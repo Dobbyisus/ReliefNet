@@ -3,8 +3,13 @@ package com.meshrelief.core.mesh;
 import com.meshrelief.core.connection.MessageListener;
 import com.meshrelief.core.model.Packet;
 import com.meshrelief.core.model.PacketType;
+import com.meshrelief.core.model.SerializationException;
+import com.meshrelief.core.p2p.PeerStatus;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
 import java.util.UUID;
 
 public class MeshRouter implements MessageListener {
@@ -12,7 +17,6 @@ public class MeshRouter implements MessageListener {
     private static final int DEFAULT_TTL = 4;
     private static final long SEEN_CACHE_TTL_MS = 5 * 60 * 1000L;
     private static final String WIFI_DIRECT_TRANSPORT = "WIFI_DIRECT";
-    private static final String PRIMARY_CONNECTION_REF = "wifi-direct-primary";
 
     private final String localDeviceId;
     private final String localDisplayName;
@@ -21,6 +25,9 @@ public class MeshRouter implements MessageListener {
     private final NeighborTable neighborTable;
 
     private PacketSender packetSender;
+    private NodeRole localRole = NodeRole.GROUP_CLIENT;
+    private String currentGroupId;
+    private boolean connected;
 
     public MeshRouter(String localDeviceId, String localDisplayName, MeshRouterListener listener) {
         this(
@@ -44,29 +51,37 @@ public class MeshRouter implements MessageListener {
         this.listener = listener;
         this.seenPacketCache = seenPacketCache;
         this.neighborTable = neighborTable;
+        this.currentGroupId = localDeviceId;
     }
 
     public void attachPacketSender(PacketSender packetSender) {
         this.packetSender = packetSender;
     }
 
-    public boolean sendChatMessage(String message) {
+    public boolean sendChatMessage(String message, String recipientNodeId) {
         if (packetSender == null || !packetSender.isReady()) {
-            notifyError("Not connected to peer");
+            notifyError("Not connected to group");
             return false;
         }
 
+        String recipientLabel = recipientNodeId == null ? "All" : resolveName(recipientNodeId);
         Packet packet = buildPacket(
                 PacketType.CHAT,
-                resolveCurrentDestinationId(),
+                recipientNodeId,
+                currentGroupId,
                 message.getBytes(StandardCharsets.UTF_8)
         );
 
         seenPacketCache.markIfNew(packet.getPacketId());
-        packetSender.sendPacket(packet);
+
+        if (localRole == NodeRole.GROUP_OWNER) {
+            routeLocalOutboundFromGroupOwner(packet);
+        } else {
+            packetSender.sendPacket(packet);
+        }
 
         if (listener != null) {
-            listener.onChatMessage("You", message, true);
+            listener.onChatMessage("You", recipientLabel, message, true);
         }
 
         return true;
@@ -88,44 +103,78 @@ public class MeshRouter implements MessageListener {
             return;
         }
 
+        if (packet.getType() == PacketType.MEMBER_SNAPSHOT) {
+            handleMemberSnapshot(packet);
+            return;
+        }
+
         if (packet.getTtl() <= 0) {
             return;
         }
 
-        if (isForLocalNode(packet)) {
-            deliverLocally(packet);
+        if (!currentGroupId.equals(packet.getDestinationGroupId())) {
+            // Future forwarding hook for other groups.
             return;
         }
 
-        attemptForward(packet, senderId);
+        if (localRole == NodeRole.GROUP_OWNER) {
+            routeGroupPacket(packet);
+            return;
+        }
+
+        deliverLocally(packet);
+    }
+
+    @Override
+    public void onPeerDisconnected(String nodeId) {
+        if (nodeId == null) {
+            return;
+        }
+
+        neighborTable.markDisconnected(nodeId);
+        if (localRole == NodeRole.GROUP_OWNER) {
+            emitMemberSnapshot();
+            pushMembersUpdate();
+        }
     }
 
     @Override
     public void onConnectionEstablished() {
-        if (listener != null) {
-            listener.onConnectionEstablished(null);
-        }
+        connected = true;
 
-        if (packetSender == null || !packetSender.isReady()) {
+        if (localRole == NodeRole.GROUP_OWNER) {
+            ensureLocalMember();
+            notifyGroupState("Hosting group");
+            pushMembersUpdate();
             return;
         }
 
-        Packet helloPacket = buildPacket(
-                PacketType.HELLO,
-                null,
-                localDisplayName.getBytes(StandardCharsets.UTF_8)
-        );
-
-        seenPacketCache.markIfNew(helloPacket.getPacketId());
-        packetSender.sendPacket(helloPacket);
+        notifyGroupState("Joined group");
+        sendHelloPacket();
     }
 
     @Override
     public void onConnectionClosed() {
+        connected = false;
         neighborTable.clear();
+        if (localRole != NodeRole.GROUP_OWNER) {
+            currentGroupId = localDeviceId;
+        }
+        notifyGroupState("Not connected");
+        pushMembersUpdate();
+    }
 
-        if (listener != null) {
-            listener.onConnectionClosed();
+    @Override
+    public void onLocalNodeRoleChanged(NodeRole role) {
+        this.localRole = role;
+
+        if (role == NodeRole.GROUP_OWNER) {
+            currentGroupId = localDeviceId;
+            ensureLocalMember();
+            notifyGroupState("Hosting group");
+            pushMembersUpdate();
+        } else {
+            notifyGroupState(connected ? "Joined group" : "Not connected");
         }
     }
 
@@ -134,36 +183,101 @@ public class MeshRouter implements MessageListener {
         notifyError(error);
     }
 
+    public void onHostingRequested() {
+        localRole = NodeRole.GROUP_OWNER;
+        currentGroupId = localDeviceId;
+        connected = true;
+        ensureLocalMember();
+        notifyGroupState("Hosting group");
+        pushMembersUpdate();
+    }
+
     public NeighborTable getNeighborTable() {
         return neighborTable;
     }
 
-    private Packet buildPacket(PacketType type, String destinationId, byte[] payload) {
-        return new Packet(
-                UUID.randomUUID().toString(),
-                localDeviceId,
-                destinationId,
-                DEFAULT_TTL,
-                System.currentTimeMillis(),
-                type,
-                payload
-        );
+    public String getLocalDeviceId() {
+        return localDeviceId;
     }
 
     private void handleHelloPacket(Packet packet) {
-        String displayName = new String(packet.getPayload(), StandardCharsets.UTF_8);
+        try {
+            ControlPayloadCodec.HelloPayload helloPayload =
+                    ControlPayloadCodec.decodeHello(packet.getPayload());
 
-        neighborTable.upsertNeighbor(
-                packet.getSourceId(),
-                displayName,
-                WIFI_DIRECT_TRANSPORT,
-                PRIMARY_CONNECTION_REF,
-                System.currentTimeMillis()
-        );
+            neighborTable.upsertNeighbor(
+                    packet.getSourceNodeId(),
+                    helloPayload.getDisplayName(),
+                    currentGroupId,
+                    helloPayload.getRole(),
+                    WIFI_DIRECT_TRANSPORT,
+                    packet.getSourceNodeId(),
+                    System.currentTimeMillis()
+            );
 
-        if (listener != null) {
-            listener.onConnectionEstablished(displayName);
+            if (localRole == NodeRole.GROUP_OWNER) {
+                emitMemberSnapshot();
+                pushMembersUpdate();
+            }
+        } catch (SerializationException e) {
+            notifyError(e.getMessage());
         }
+    }
+
+    private void handleMemberSnapshot(Packet packet) {
+        try {
+            ControlPayloadCodec.MemberSnapshot snapshot =
+                    ControlPayloadCodec.decodeMemberSnapshot(packet.getPayload());
+
+            currentGroupId = snapshot.getGroupId();
+            List<NeighborConnection> members = new ArrayList<>(snapshot.getMembers());
+            boolean selfPresent = false;
+
+            for (NeighborConnection member : members) {
+                if (localDeviceId.equals(member.getNodeId())) {
+                    selfPresent = true;
+                }
+            }
+
+            if (!selfPresent) {
+                members.add(createLocalMember(NodeRole.GROUP_CLIENT));
+            }
+
+            neighborTable.replaceAll(members);
+            connected = true;
+            notifyGroupState("Joined group");
+            pushMembersUpdate();
+        } catch (SerializationException e) {
+            notifyError(e.getMessage());
+        }
+    }
+
+    private void routeLocalOutboundFromGroupOwner(Packet packet) {
+        if (packet.getDestinationNodeId() == null) {
+            packetSender.broadcastToGroup(packet, localDeviceId);
+            return;
+        }
+
+        if (localDeviceId.equals(packet.getDestinationNodeId())) {
+            return;
+        }
+
+        packetSender.sendToNode(packet, packet.getDestinationNodeId());
+    }
+
+    private void routeGroupPacket(Packet packet) {
+        if (packet.getDestinationNodeId() == null) {
+            deliverLocally(packet);
+            packetSender.broadcastToGroup(packet, packet.getSourceNodeId());
+            return;
+        }
+
+        if (localDeviceId.equals(packet.getDestinationNodeId())) {
+            deliverLocally(packet);
+            return;
+        }
+
+        packetSender.sendToNode(packet, packet.getDestinationNodeId());
     }
 
     private void deliverLocally(Packet packet) {
@@ -172,48 +286,139 @@ public class MeshRouter implements MessageListener {
         }
 
         String message = new String(packet.getPayload(), StandardCharsets.UTF_8);
-        NeighborConnection neighbor = neighborTable.getNeighbor(packet.getSourceId());
-        String senderName = neighbor != null
-                ? neighbor.getDisplayName()
-                : packet.getSourceId();
+        String senderName = resolveName(packet.getSourceNodeId());
+        String recipientName = packet.getDestinationNodeId() == null
+                ? "All"
+                : localDeviceId.equals(packet.getDestinationNodeId())
+                ? "You"
+                : resolveName(packet.getDestinationNodeId());
 
         if (listener != null) {
-            listener.onChatMessage(senderName, message, false);
+            listener.onChatMessage(senderName, recipientName, message, false);
         }
     }
 
-    private void attemptForward(Packet packet, String senderId) {
+    private void sendHelloPacket() {
         if (packetSender == null || !packetSender.isReady()) {
             return;
         }
 
-        if (neighborTable.size() <= 1) {
-            return;
+        try {
+            Packet helloPacket = buildPacket(
+                    PacketType.HELLO,
+                    null,
+                    currentGroupId,
+                    ControlPayloadCodec.encodeHello(localDisplayName, currentGroupId, NodeRole.GROUP_CLIENT)
+            );
+
+            seenPacketCache.markIfNew(helloPacket.getPacketId());
+            packetSender.sendPacket(helloPacket);
+        } catch (SerializationException e) {
+            notifyError(e.getMessage());
         }
-
-        Packet forwardedPacket = packet.copy();
-        forwardedPacket.setTtl(packet.getTtl() - 1);
-
-        if (forwardedPacket.getTtl() <= 0) {
-            return;
-        }
-
-        NeighborConnection neighbor = neighborTable.getFirstConnectedNeighbor();
-        if (neighbor == null || neighbor.getNeighborId().equals(senderId)) {
-            return;
-        }
-
-        packetSender.sendPacket(forwardedPacket);
     }
 
-    private boolean isForLocalNode(Packet packet) {
-        return packet.getDestinationId() == null
-                || localDeviceId.equals(packet.getDestinationId());
+    private void emitMemberSnapshot() {
+        if (packetSender == null) {
+            return;
+        }
+
+        try {
+            List<NeighborConnection> members = new ArrayList<>();
+            ensureLocalMember();
+            Collection<NeighborConnection> currentMembers = neighborTable.getNeighbors();
+            members.addAll(currentMembers);
+
+            Packet snapshotPacket = buildPacket(
+                    PacketType.MEMBER_SNAPSHOT,
+                    null,
+                    currentGroupId,
+                    ControlPayloadCodec.encodeMemberSnapshot(currentGroupId, members)
+            );
+
+            packetSender.broadcastToGroup(snapshotPacket, null);
+        } catch (SerializationException e) {
+            notifyError(e.getMessage());
+        }
     }
 
-    private String resolveCurrentDestinationId() {
-        NeighborConnection neighbor = neighborTable.getFirstConnectedNeighbor();
-        return neighbor != null ? neighbor.getNeighborId() : null;
+    private void ensureLocalMember() {
+        NodeRole role = localRole == null ? NodeRole.GROUP_CLIENT : localRole;
+        neighborTable.upsertNeighbor(
+                localDeviceId,
+                localDisplayName,
+                currentGroupId,
+                role,
+                WIFI_DIRECT_TRANSPORT,
+                localDeviceId,
+                System.currentTimeMillis()
+        );
+    }
+
+    private NeighborConnection createLocalMember(NodeRole role) {
+        return new NeighborConnection(
+                localDeviceId,
+                localDisplayName,
+                currentGroupId,
+                role,
+                PeerStatus.CONNECTED,
+                WIFI_DIRECT_TRANSPORT,
+                localDeviceId,
+                System.currentTimeMillis()
+        );
+    }
+
+    private Packet buildPacket(
+            PacketType type,
+            String destinationNodeId,
+            String destinationGroupId,
+            byte[] payload) {
+
+        return new Packet(
+                UUID.randomUUID().toString(),
+                localDeviceId,
+                destinationNodeId,
+                currentGroupId,
+                destinationGroupId,
+                DEFAULT_TTL,
+                System.currentTimeMillis(),
+                type,
+                payload
+        );
+    }
+
+    private void pushMembersUpdate() {
+        if (listener == null) {
+            return;
+        }
+
+        List<NeighborConnection> members = new ArrayList<>(neighborTable.getNeighbors());
+        listener.onMembersUpdated(members);
+    }
+
+    private void notifyGroupState(String statusText) {
+        if (listener != null) {
+            listener.onGroupStateChanged(
+                    statusText,
+                    localRole,
+                    currentGroupId,
+                    neighborTable.size(),
+                    connected
+            );
+        }
+    }
+
+    private String resolveName(String nodeId) {
+        if (nodeId == null) {
+            return "All";
+        }
+
+        if (localDeviceId.equals(nodeId)) {
+            return "You";
+        }
+
+        NeighborConnection neighbor = neighborTable.getNeighbor(nodeId);
+        return neighbor != null ? neighbor.getDisplayName() : nodeId;
     }
 
     private void notifyError(String error) {

@@ -2,49 +2,47 @@ package com.meshrelief.core.connection;
 
 import android.net.wifi.p2p.WifiP2pInfo;
 
+import com.meshrelief.core.mesh.NodeRole;
+import com.meshrelief.core.mesh.PacketSender;
 import com.meshrelief.core.model.Packet;
 
 /**
- * Manages socket connections for 2-device P2P communication.
- * Decides role (server or client) based on Group Owner status.
- * Supports bidirectional messaging.
+ * Manages GO or client socket transport for Wi-Fi Direct communication.
  */
-public class ConnectionHandler implements MessageListener {
+public class ConnectionHandler implements MessageListener, PacketSender {
 
     private SocketServer server;
     private SocketClient client;
     private boolean isInitialized = false;
-    private boolean isGroupOwner = false;
-    private MessageListener externalListener;
+    private NodeRole localRole = NodeRole.GROUP_CLIENT;
+    private final MessageListener externalListener;
 
     public ConnectionHandler(MessageListener externalListener) {
         this.externalListener = externalListener;
     }
 
-    /**
-     * Initializes connection based on WiFi Direct info.
-     * If this device is Group Owner: start server
-     * If this device is client: connect to server
-     *
-     * @param info The WiFi P2P connection info
-     */
     public void initialize(WifiP2pInfo info) {
-        if (isInitialized) {
-            return;
-        }
-
         if (!info.groupFormed) {
             return;
         }
 
-        isGroupOwner = info.isGroupOwner;
+        NodeRole newRole = info.isGroupOwner
+                ? NodeRole.GROUP_OWNER
+                : NodeRole.GROUP_CLIENT;
+        this.localRole = newRole;
+
+        if (externalListener != null) {
+            externalListener.onLocalNodeRoleChanged(newRole);
+        }
+
+        if (isInitialized) {
+            return;
+        }
 
         if (info.isGroupOwner) {
-            // This device is the Group Owner - start server
             server = new SocketServer(this);
             server.start();
         } else {
-            // This device is client - connect to server
             client = new SocketClient(this);
             client.connect(info.groupOwnerAddress);
         }
@@ -52,50 +50,69 @@ public class ConnectionHandler implements MessageListener {
         isInitialized = true;
     }
 
-    /**
-     * Sends a message through the appropriate socket.
-     *
-     * @param packet The packet to send
-     */
+    @Override
     public void sendPacket(Packet packet) {
-        if (isGroupOwner) {
-            if (server != null && server.isClientConnected()) {
+        if (localRole == NodeRole.GROUP_OWNER) {
+            if (server != null) {
                 server.sendPacket(packet);
             }
-        } else {
-            if (client != null && client.isConnected()) {
-                client.sendPacket(packet);
+        } else if (client != null && client.isConnected()) {
+            client.sendPacket(packet);
+        }
+    }
+
+    @Override
+    public void sendToNode(Packet packet, String nodeId) {
+        if (localRole == NodeRole.GROUP_OWNER) {
+            if (server != null) {
+                server.sendToNode(packet, nodeId);
             }
+            return;
         }
+
+        sendPacket(packet);
     }
 
-    /**
-     * Checks if socket communication is ready.
-     *
-     * @return true if server is listening or client is connected
-     */
+    @Override
+    public void broadcastToGroup(Packet packet, String excludeNodeId) {
+        if (localRole == NodeRole.GROUP_OWNER) {
+            if (server != null) {
+                server.broadcastToGroup(packet, excludeNodeId);
+            }
+            return;
+        }
+
+        sendPacket(packet);
+    }
+
+    @Override
     public boolean isReady() {
-        if (isGroupOwner) {
-            return server != null && server.isClientConnected();
-        } else {
-            return client != null && client.isConnected();
+        if (localRole == NodeRole.GROUP_OWNER) {
+            return server != null && server.isRunning();
         }
+
+        return client != null && client.isConnected();
     }
 
-    /**
-     * Cleans up resources.
-     */
     public void cleanup() {
         if (server != null) server.stop();
         if (client != null) client.disconnect();
+        server = null;
+        client = null;
         isInitialized = false;
     }
 
-    // MessageListener callbacks - forward to external listener
     @Override
     public void onPacketReceived(Packet packet, String senderId) {
         if (externalListener != null) {
             externalListener.onPacketReceived(packet, senderId);
+        }
+    }
+
+    @Override
+    public void onPeerDisconnected(String nodeId) {
+        if (externalListener != null) {
+            externalListener.onPeerDisconnected(nodeId);
         }
     }
 
@@ -110,6 +127,13 @@ public class ConnectionHandler implements MessageListener {
     public void onConnectionClosed() {
         if (externalListener != null) {
             externalListener.onConnectionClosed();
+        }
+    }
+
+    @Override
+    public void onLocalNodeRoleChanged(NodeRole role) {
+        if (externalListener != null) {
+            externalListener.onLocalNodeRoleChanged(role);
         }
     }
 

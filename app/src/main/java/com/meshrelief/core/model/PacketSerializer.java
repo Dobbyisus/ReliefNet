@@ -22,7 +22,7 @@ import java.nio.charset.StandardCharsets;
  *   PAYLOAD (variable bytes)
  */
 public class PacketSerializer {
-    private static final byte FORMAT_VERSION = 0x02;
+    private static final byte FORMAT_VERSION = 0x03;
     private static final int MAX_STRING_LENGTH = 1024; // 1KB max for IDs
     private static final int MAX_PAYLOAD_SIZE = 1024 * 1024; // 1MB max payload
 
@@ -57,6 +57,9 @@ public class PacketSerializer {
             } else {
                 dos.writeByte(0x00); // No destination (broadcast)
             }
+
+            writeString(dos, packet.getSourceGroupId(), "Source Group ID");
+            writeString(dos, packet.getDestinationGroupId(), "Destination Group ID");
 
             dos.writeByte(packet.getType().getCode());
 
@@ -124,6 +127,8 @@ public class PacketSerializer {
                 destinationId = readString(dis, "Destination ID");
             }
 
+            String sourceGroupId = readString(dis, "Source Group ID");
+            String destinationGroupId = readString(dis, "Destination Group ID");
             PacketType type = PacketType.fromCode(dis.readByte());
 
             // Read TTL
@@ -148,7 +153,17 @@ public class PacketSerializer {
                 dis.readFully(payload);
             }
 
-            return new Packet(packetId, sourceId, destinationId, ttl, timestamp, type, payload);
+            return new Packet(
+                    packetId,
+                    sourceId,
+                    destinationId,
+                    sourceGroupId,
+                    destinationGroupId,
+                    ttl,
+                    timestamp,
+                    type,
+                    payload
+            );
 
         } catch (SerializationException e) {
             throw e;
@@ -235,6 +250,9 @@ public class PacketSerializer {
         if (packet.getDestinationId() != null) {
             size += 2 + packet.getDestinationId().getBytes(StandardCharsets.UTF_8).length;
         }
+
+        size += 2 + packet.getSourceGroupId().getBytes(StandardCharsets.UTF_8).length;
+        size += 2 + packet.getDestinationGroupId().getBytes(StandardCharsets.UTF_8).length;
 
         // Packet type: 1 byte
         size += 1;

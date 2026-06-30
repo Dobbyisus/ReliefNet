@@ -21,12 +21,15 @@ import androidx.core.app.ActivityCompat;
 import com.meshrelief.R;
 import com.meshrelief.core.mesh.MeshRouter;
 import com.meshrelief.core.mesh.MeshRouterListener;
+import com.meshrelief.core.mesh.NeighborConnection;
+import com.meshrelief.core.mesh.NodeRole;
 import com.meshrelief.core.transport.PeerDiscoveryListener;
 import com.meshrelief.core.transport.WiFiDirectBroadcastReceiver;
 import com.meshrelief.core.transport.WiFiDirectManager;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 import java.util.UUID;
 
 public class ChatActivity extends Activity implements PeerDiscoveryListener, MeshRouterListener {
@@ -42,16 +45,34 @@ public class ChatActivity extends Activity implements PeerDiscoveryListener, Mes
     private IntentFilter intentFilter;
 
     private ListView peerListView;
-    private ArrayAdapter<String> peerAdapter;
-    private final ArrayList<String> peerNames = new ArrayList<>();
-    private final ArrayList<WifiP2pDevice> peerDevices = new ArrayList<>();
-
     private TextView connectionStatusView;
+    private TextView roleStatusText;
+    private TextView groupInfoText;
+    private TextView memberCountText;
+    private TextView listSectionTitle;
+    private TextView currentRecipientText;
     private EditText messageInputView;
     private Button sendButtonView;
+    private Button hostGroupButton;
+    private Button discoverGroupsButton;
+    private Button leaveGroupButton;
+    private Button talkToAllButton;
     private ListView messagesListView;
+
+    private ArrayAdapter<String> peerAdapter;
     private ArrayAdapter<String> messagesAdapter;
+    private final ArrayList<String> peerEntries = new ArrayList<>();
     private final ArrayList<String> messages = new ArrayList<>();
+    private final ArrayList<WifiP2pDevice> peerDevices = new ArrayList<>();
+    private final ArrayList<NeighborConnection> memberEntries = new ArrayList<>();
+
+    private String localDeviceId;
+    private String selectedRecipientId;
+    private String selectedRecipientLabel = "All";
+    private boolean connected;
+    private boolean hosting;
+    private NodeRole currentRole = NodeRole.GROUP_CLIENT;
+    private String currentGroupId = "Not assigned";
 
     private void requestPermissionsIfNeeded() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -90,24 +111,29 @@ public class ChatActivity extends Activity implements PeerDiscoveryListener, Mes
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_chat);
 
+        localDeviceId = getOrCreateDeviceId();
+
         peerListView = findViewById(R.id.peerListView);
+        connectionStatusView = findViewById(R.id.connectionStatus);
+        roleStatusText = findViewById(R.id.roleStatusText);
+        groupInfoText = findViewById(R.id.groupInfoText);
+        memberCountText = findViewById(R.id.memberCountText);
+        listSectionTitle = findViewById(R.id.listSectionTitle);
+        currentRecipientText = findViewById(R.id.currentRecipientText);
+        messageInputView = findViewById(R.id.messageInput);
+        sendButtonView = findViewById(R.id.sendButton);
+        hostGroupButton = findViewById(R.id.hostGroupButton);
+        discoverGroupsButton = findViewById(R.id.discoverGroupsButton);
+        leaveGroupButton = findViewById(R.id.leaveGroupButton);
+        talkToAllButton = findViewById(R.id.talkToAllButton);
+        messagesListView = findViewById(R.id.messagesListView);
+
         peerAdapter = new ArrayAdapter<>(
                 this,
                 android.R.layout.simple_list_item_1,
-                peerNames
+                peerEntries
         );
         peerListView.setAdapter(peerAdapter);
-        peerListView.setOnItemClickListener((parent, view, position, id) -> {
-            WifiP2pDevice device = peerDevices.get(position);
-            wifiDirectManager.connect(device);
-        });
-
-        connectionStatusView = findViewById(R.id.connectionStatus);
-        messageInputView = findViewById(R.id.messageInput);
-        sendButtonView = findViewById(R.id.sendButton);
-        messagesListView = findViewById(R.id.messagesListView);
-        messageInputView.setEnabled(false);
-        sendButtonView.setEnabled(false);
 
         messagesAdapter = new ArrayAdapter<>(
                 this,
@@ -116,20 +142,113 @@ public class ChatActivity extends Activity implements PeerDiscoveryListener, Mes
         );
         messagesListView.setAdapter(messagesAdapter);
 
-        sendButtonView.setOnClickListener(v -> {
-            String messageText = messageInputView.getText().toString().trim();
-            if (!messageText.isEmpty() && meshRouter.sendChatMessage(messageText)) {
-                messageInputView.setText("");
-            }
-        });
-
         meshRouter = new MeshRouter(
-                getOrCreateDeviceId(),
+                localDeviceId,
                 resolveDisplayName(),
                 this
         );
         wifiDirectManager = new WiFiDirectManager(this, meshRouter);
         meshRouter.attachPacketSender(wifiDirectManager);
+
+        peerListView.setOnItemClickListener((parent, view, position, id) -> {
+            if (connected || hosting) {
+                handleMemberSelection(position);
+                return;
+            }
+
+            WifiP2pDevice device = peerDevices.get(position);
+            wifiDirectManager.connect(device, new WifiP2pManager.ActionListener() {
+                @Override
+                public void onSuccess() {
+                    runOnUiThread(() -> connectionStatusView.setText("Status: Joining group"));
+                }
+
+                @Override
+                public void onFailure(int reason) {
+                    runOnUiThread(() -> Toast.makeText(
+                            ChatActivity.this,
+                            "Failed to join group",
+                            Toast.LENGTH_SHORT
+                    ).show());
+                }
+            });
+        });
+
+        sendButtonView.setOnClickListener(v -> {
+            String messageText = messageInputView.getText().toString().trim();
+            if (!messageText.isEmpty()
+                    && meshRouter.sendChatMessage(messageText, selectedRecipientId)) {
+                messageInputView.setText("");
+            }
+        });
+
+        hostGroupButton.setOnClickListener(v -> {
+            hosting = true;
+            meshRouter.onHostingRequested();
+            wifiDirectManager.createGroup(new WifiP2pManager.ActionListener() {
+                @Override
+                public void onSuccess() {
+                    runOnUiThread(() -> {
+                        connectionStatusView.setText("Status: Hosting group");
+                        refreshPeerSection();
+                    });
+                }
+
+                @Override
+                public void onFailure(int reason) {
+                    runOnUiThread(() -> {
+                        hosting = false;
+                        meshRouter.onLocalNodeRoleChanged(NodeRole.GROUP_CLIENT);
+                        meshRouter.onConnectionClosed();
+                        connectionStatusView.setText("Status: Not connected");
+                        Toast.makeText(
+                                ChatActivity.this,
+                                "Failed to host group",
+                                Toast.LENGTH_SHORT
+                        ).show();
+                        refreshPeerSection();
+                    });
+                }
+            });
+        });
+
+        discoverGroupsButton.setOnClickListener(v -> wifiDirectManager.discoverPeers(
+                new WifiP2pManager.ActionListener() {
+                    @Override
+                    public void onSuccess() {
+                        runOnUiThread(() -> {
+                            if (!connected && !hosting) {
+                                connectionStatusView.setText("Status: Discovering groups");
+                            }
+                        });
+                    }
+
+                    @Override
+                    public void onFailure(int reason) {
+                        runOnUiThread(() -> Toast.makeText(
+                                ChatActivity.this,
+                                "Failed to discover groups",
+                                Toast.LENGTH_SHORT
+                        ).show());
+                    }
+                }
+        ));
+
+        leaveGroupButton.setOnClickListener(v -> {
+            wifiDirectManager.disconnect();
+            hosting = false;
+            connected = false;
+            meshRouter.onLocalNodeRoleChanged(NodeRole.GROUP_CLIENT);
+            selectedRecipientId = null;
+            selectedRecipientLabel = "All";
+            refreshUi();
+        });
+
+        talkToAllButton.setOnClickListener(v -> {
+            selectedRecipientId = null;
+            selectedRecipientLabel = "All";
+            currentRecipientText.setText("Talking to: All");
+        });
 
         intentFilter = new IntentFilter();
         intentFilter.addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION);
@@ -145,22 +264,7 @@ public class ChatActivity extends Activity implements PeerDiscoveryListener, Mes
 
         registerReceiver(receiver, intentFilter);
         requestPermissionsIfNeeded();
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ActivityCompat.checkSelfPermission(
-                    this,
-                    Manifest.permission.NEARBY_WIFI_DEVICES)
-                    == PackageManager.PERMISSION_GRANTED) {
-                wifiDirectManager.discoverPeers();
-            }
-        } else {
-            if (ActivityCompat.checkSelfPermission(
-                    this,
-                    Manifest.permission.ACCESS_FINE_LOCATION)
-                    == PackageManager.PERMISSION_GRANTED) {
-                wifiDirectManager.discoverPeers();
-            }
-        }
+        refreshUi();
     }
 
     @Override
@@ -187,12 +291,16 @@ public class ChatActivity extends Activity implements PeerDiscoveryListener, Mes
     @Override
     public void onPeersDiscovered(Collection<WifiP2pDevice> peers) {
         runOnUiThread(() -> {
-            peerNames.clear();
+            if (connected || hosting) {
+                return;
+            }
+
             peerDevices.clear();
+            peerEntries.clear();
 
             for (WifiP2pDevice device : peers) {
-                peerNames.add(device.deviceName);
                 peerDevices.add(device);
+                peerEntries.add(device.deviceName + " (Join)");
             }
 
             peerAdapter.notifyDataSetChanged();
@@ -200,40 +308,58 @@ public class ChatActivity extends Activity implements PeerDiscoveryListener, Mes
     }
 
     @Override
-    public void onChatMessage(String senderName, String message, boolean outgoing) {
+    public void onChatMessage(String senderName, String recipientName, String message, boolean outgoing) {
         runOnUiThread(() -> {
-            messages.add(senderName + ": " + message);
+            messages.add(senderName + " -> " + recipientName + ": " + message);
             messagesAdapter.notifyDataSetChanged();
             messagesListView.smoothScrollToPosition(messages.size() - 1);
         });
     }
 
     @Override
-    public void onConnectionEstablished(String neighborName) {
-        runOnUiThread(() -> {
-            connectionStatusView.setText("Status: Connected");
-            connectionStatusView.setTextColor(0xFF00AA00);
-            messageInputView.setEnabled(true);
-            sendButtonView.setEnabled(true);
+    public void onGroupStateChanged(
+            String statusText,
+            NodeRole role,
+            String groupId,
+            int memberCount,
+            boolean connected) {
 
-            if (neighborName != null) {
-                Toast.makeText(this, "Connection established!", Toast.LENGTH_SHORT).show();
-                messages.add("[System] Connected to " + neighborName);
+        runOnUiThread(() -> {
+            this.currentRole = role;
+            this.currentGroupId = groupId;
+            this.connected = connected;
+
+            if (!connected && role != NodeRole.GROUP_OWNER) {
+                hosting = false;
             }
 
-            messagesAdapter.notifyDataSetChanged();
+            connectionStatusView.setText("Status: " + statusText);
+            refreshUi();
         });
     }
 
     @Override
-    public void onConnectionClosed() {
+    public void onMembersUpdated(List<NeighborConnection> members) {
         runOnUiThread(() -> {
-            connectionStatusView.setText("Status: Disconnected");
-            connectionStatusView.setTextColor(0xFFCC0000);
-            messages.add("[System] Connection closed");
-            messagesAdapter.notifyDataSetChanged();
-            messageInputView.setEnabled(false);
-            sendButtonView.setEnabled(false);
+            memberEntries.clear();
+            memberEntries.addAll(members);
+
+            boolean recipientStillPresent = selectedRecipientId == null;
+            for (NeighborConnection member : members) {
+                if (member.getNodeId().equals(selectedRecipientId)) {
+                    recipientStillPresent = true;
+                    break;
+                }
+            }
+
+            if (!recipientStillPresent) {
+                selectedRecipientId = null;
+                selectedRecipientLabel = "All";
+                messages.add("[System] Selected member left the group. Switched to All.");
+                messagesAdapter.notifyDataSetChanged();
+            }
+
+            refreshUi();
         });
     }
 
@@ -241,9 +367,6 @@ public class ChatActivity extends Activity implements PeerDiscoveryListener, Mes
     public void onError(String error) {
         runOnUiThread(() -> {
             connectionStatusView.setText("Status: Error - " + error);
-            connectionStatusView.setTextColor(0xFFFF0000);
-            messages.add("[Error] " + error);
-            messagesAdapter.notifyDataSetChanged();
             Toast.makeText(this, error, Toast.LENGTH_SHORT).show();
         });
     }
@@ -253,6 +376,78 @@ public class ChatActivity extends Activity implements PeerDiscoveryListener, Mes
         super.onDestroy();
         unregisterReceiver(receiver);
         wifiDirectManager.disconnect();
+    }
+
+    private void handleMemberSelection(int position) {
+        if (position < 0 || position >= memberEntries.size()) {
+            return;
+        }
+
+        NeighborConnection member = memberEntries.get(position);
+        if (localDeviceId.equals(member.getNodeId())) {
+            Toast.makeText(this, "You are already selected locally", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        selectedRecipientId = member.getNodeId();
+        selectedRecipientLabel = member.getDisplayName();
+        currentRecipientText.setText("Talking to: " + selectedRecipientLabel);
+    }
+
+    private void refreshUi() {
+        roleStatusText.setText("Role: " + formatRole(currentRole));
+        groupInfoText.setText("Group: " + currentGroupId);
+        memberCountText.setText("Members: " + memberEntries.size());
+        currentRecipientText.setText("Talking to: " + selectedRecipientLabel);
+        messageInputView.setEnabled(connected || hosting);
+        sendButtonView.setEnabled(connected || hosting);
+        leaveGroupButton.setEnabled(connected || hosting);
+        refreshPeerSection();
+    }
+
+    private void refreshPeerSection() {
+        peerEntries.clear();
+
+        if (connected || hosting) {
+            listSectionTitle.setText("Group Members");
+            for (NeighborConnection member : memberEntries) {
+                peerEntries.add(formatMemberEntry(member));
+            }
+        } else {
+            listSectionTitle.setText("Nearby Hosts");
+            for (WifiP2pDevice device : peerDevices) {
+                peerEntries.add(device.deviceName + " (Join)");
+            }
+        }
+
+        peerAdapter.notifyDataSetChanged();
+    }
+
+    private String formatMemberEntry(NeighborConnection member) {
+        StringBuilder builder = new StringBuilder();
+        builder.append(member.getDisplayName());
+
+        if (localDeviceId.equals(member.getNodeId())) {
+            builder.append(" [You]");
+        }
+
+        if (member.getRole() == NodeRole.GROUP_OWNER) {
+            builder.append(" [GO]");
+        }
+
+        return builder.toString();
+    }
+
+    private String formatRole(NodeRole role) {
+        if (role == NodeRole.GROUP_OWNER) {
+            return "Group Owner";
+        }
+
+        if (role == NodeRole.GROUP_RELAY) {
+            return "Group Relay";
+        }
+
+        return "Group Member";
     }
 
     private String getOrCreateDeviceId() {

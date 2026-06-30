@@ -10,8 +10,7 @@ import java.net.InetAddress;
 import java.net.Socket;
 
 /**
- * Bidirectional client socket for connecting to server.
- * Connects to Group Owner IP on port 8888 and can send/receive packets.
+ * Single upstream client socket that connects a group client to the Group Owner.
  */
 public class SocketClient {
 
@@ -28,11 +27,6 @@ public class SocketClient {
         this.messageListener = messageListener;
     }
 
-    /**
-     * Connects to the server.
-     *
-     * @param serverAddress The Group Owner IP address
-     */
     public void connect(InetAddress serverAddress) {
         new Thread(() -> {
             try {
@@ -65,11 +59,11 @@ public class SocketClient {
                     Packet packet = PacketSerializer.deserialize(packetBytes);
 
                     if (messageListener != null) {
-                        messageListener.onPacketReceived(packet, packet.getSourceId());
+                        messageListener.onPacketReceived(packet, packet.getSourceNodeId());
                     }
                 }
             } catch (EOFException e) {
-                // Peer closed connection.
+                // GO disconnected.
             } catch (Exception e) {
                 if (messageListener != null) {
                     messageListener.onError(e.getClass().getName());
@@ -80,12 +74,10 @@ public class SocketClient {
                 }
             }
         });
+        readThread.setDaemon(true);
         readThread.start();
     }
 
-    /**
-     * Sends a packet to the server.
-     */
     public void sendPacket(Packet packet) {
         new Thread(() -> {
             if (!isConnected || writer == null) {
@@ -105,9 +97,6 @@ public class SocketClient {
         }).start();
     }
 
-    /**
-     * Closes the connection.
-     */
     public void disconnect() {
         isConnected = false;
         try {

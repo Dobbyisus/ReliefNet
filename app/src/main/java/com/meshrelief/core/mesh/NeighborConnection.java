@@ -4,23 +4,29 @@ import com.meshrelief.core.p2p.PeerStatus;
 
 public class NeighborConnection {
 
-    private final String neighborId;
+    private final String nodeId;
     private String displayName;
+    private String groupId;
+    private NodeRole role;
     private PeerStatus status;
     private final String transportType;
-    private final String connectionRef;
+    private String connectionRef;
     private long lastSeen;
 
     public NeighborConnection(
-            String neighborId,
+            String nodeId,
             String displayName,
+            String groupId,
+            NodeRole role,
             PeerStatus status,
             String transportType,
             String connectionRef,
             long lastSeen) {
 
-        this.neighborId = neighborId;
+        this.nodeId = nodeId;
         this.displayName = displayName;
+        this.groupId = groupId;
+        this.role = role;
         this.status = status;
         this.transportType = transportType;
         this.connectionRef = connectionRef;
@@ -28,7 +34,11 @@ public class NeighborConnection {
     }
 
     public String getNeighborId() {
-        return neighborId;
+        return nodeId;
+    }
+
+    public String getNodeId() {
+        return nodeId;
     }
 
     public String getDisplayName() {
@@ -37,6 +47,22 @@ public class NeighborConnection {
 
     public void setDisplayName(String displayName) {
         this.displayName = displayName;
+    }
+
+    public String getGroupId() {
+        return groupId;
+    }
+
+    public void setGroupId(String groupId) {
+        this.groupId = groupId;
+    }
+
+    public NodeRole getRole() {
+        return role;
+    }
+
+    public void setRole(NodeRole role) {
+        this.role = role;
     }
 
     public PeerStatus getStatus() {
@@ -53,6 +79,10 @@ public class NeighborConnection {
 
     public String getConnectionRef() {
         return connectionRef;
+    }
+
+    public void setConnectionRef(String connectionRef) {
+        this.connectionRef = connectionRef;
     }
 
     public long getLastSeen() {

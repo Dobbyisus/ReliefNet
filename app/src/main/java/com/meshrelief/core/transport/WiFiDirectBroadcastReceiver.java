@@ -98,6 +98,8 @@ public class WiFiDirectBroadcastReceiver extends BroadcastReceiver {
             if (networkInfo != null
                     && networkInfo.isConnected()) {
                 wifiDirectManager.requestConnectionInfo();
+            } else {
+                wifiDirectManager.handleGroupDisconnected();
             }
         }
     }
