@@ -164,3 +164,8 @@ app/build/generated/
 .classpath
 .project
 
+# Local document-editing helpers
+render_docx.py
+_render_docx_impl.py
+wpr8_render/
+
