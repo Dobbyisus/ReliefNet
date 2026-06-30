@@ -6,7 +6,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.NetworkInfo;
-import android.net.wifi.p2p.WifiP2pDevice;
 import android.net.wifi.p2p.WifiP2pManager;
 import android.os.Build;
 
@@ -36,10 +35,6 @@ public class WiFiDirectBroadcastReceiver extends BroadcastReceiver {
 
         String action = intent.getAction();
 
-        System.out.println(
-                "Broadcast received: " + action
-        );
-
         if (WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION
                 .equals(action)) {
 
@@ -47,28 +42,14 @@ public class WiFiDirectBroadcastReceiver extends BroadcastReceiver {
                     WifiP2pManager.EXTRA_WIFI_STATE,
                     -1
             );
-
             if (state ==
                     WifiP2pManager.WIFI_P2P_STATE_ENABLED) {
-
-                System.out.println(
-                        "WiFi Direct enabled"
-                );
-
-            } else {
-
-                System.out.println(
-                        "WiFi Direct disabled"
-                );
+                return;
             }
         }
 
         else if (WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION
                 .equals(action)) {
-
-            System.out.println(
-                    "PEERS_CHANGED broadcast received"
-            );
 
             boolean permissionGranted;
 
@@ -91,39 +72,13 @@ public class WiFiDirectBroadcastReceiver extends BroadcastReceiver {
             }
 
             if (!permissionGranted) {
-
-                System.out.println(
-                        "Permission check failed in receiver"
-                );
-
                 return;
             }
 
             manager.requestPeers(
                     channel,
                     peers -> {
-
-                        System.out.println(
-                                "Peer count = "
-                                        + peers.getDeviceList().size()
-                        );
-
-                        System.out.println(
-                                "Peers discovered:"
-                        );
-
-                        for (WifiP2pDevice device :
-                                peers.getDeviceList()) {
-
-                            System.out.println(
-                                    device.deviceName
-                                            + " | "
-                                            + device.deviceAddress
-                            );
-                        }
-
                         if (listener != null) {
-
                             listener.onPeersDiscovered(
                                     peers.getDeviceList()
                             );
@@ -142,18 +97,7 @@ public class WiFiDirectBroadcastReceiver extends BroadcastReceiver {
 
             if (networkInfo != null
                     && networkInfo.isConnected()) {
-
-                System.out.println(
-                        "Connected to peer"
-                );
-
                 wifiDirectManager.requestConnectionInfo();
-
-            } else {
-
-                System.out.println(
-                        "Disconnected from peer"
-                );
             }
         }
     }

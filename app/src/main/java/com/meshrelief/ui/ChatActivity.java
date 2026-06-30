@@ -51,9 +51,6 @@ public class ChatActivity extends Activity implements PeerDiscoveryListener, Mes
     private ArrayList<String> messages = new ArrayList<>();
 
     private void requestPermissionsIfNeeded() {
-
-        System.out.println("requestPermissionsIfNeeded entered");
-
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
 
             boolean nearbyGranted =
@@ -62,15 +59,7 @@ public class ChatActivity extends Activity implements PeerDiscoveryListener, Mes
                             Manifest.permission.NEARBY_WIFI_DEVICES)
                             == PackageManager.PERMISSION_GRANTED;
 
-            System.out.println(
-                    "NEARBY_WIFI_DEVICES granted = "
-                            + nearbyGranted);
-
             if (!nearbyGranted) {
-
-                System.out.println(
-                        "Requesting NEARBY_WIFI_DEVICES permission");
-
                 ActivityCompat.requestPermissions(
                         this,
                         new String[]{
@@ -88,15 +77,7 @@ public class ChatActivity extends Activity implements PeerDiscoveryListener, Mes
                             Manifest.permission.ACCESS_FINE_LOCATION)
                             == PackageManager.PERMISSION_GRANTED;
 
-            System.out.println(
-                    "ACCESS_FINE_LOCATION granted = "
-                            + locationGranted);
-
             if (!locationGranted) {
-
-                System.out.println(
-                        "Requesting ACCESS_FINE_LOCATION permission");
-
                 ActivityCompat.requestPermissions(
                         this,
                         new String[]{
@@ -106,8 +87,6 @@ public class ChatActivity extends Activity implements PeerDiscoveryListener, Mes
                 );
             }
         }
-
-        System.out.println("requestPermissionsIfNeeded exited");
     }
 
     @Override
@@ -127,7 +106,6 @@ public class ChatActivity extends Activity implements PeerDiscoveryListener, Mes
         peerListView.setOnItemClickListener(
                 (parent, view, position, id) -> {
                     WifiP2pDevice device = peerDevices.get(position);
-                    System.out.println("Selected peer: " + device.deviceName);
                     wifiDirectManager.connect(device);
                 }
         );
@@ -151,10 +129,6 @@ public class ChatActivity extends Activity implements PeerDiscoveryListener, Mes
             if (!messageText.isEmpty()) {
                 if (wifiDirectManager.isConnectionReady()) {
                     messages.add("You: " + messageText);
-                    messages.add(
-                            "[DEBUG] Ready = "
-                                    + wifiDirectManager.isConnectionReady()
-                    );
                     messagesAdapter.notifyDataSetChanged();
                     messagesListView.smoothScrollToPosition(
                             messages.size() - 1
@@ -166,8 +140,6 @@ public class ChatActivity extends Activity implements PeerDiscoveryListener, Mes
                 }
             }
         });
-
-        System.out.println("ChatActivity onCreate");
 
         // Initialize WiFi Direct manager with message listener
         wifiDirectManager = new WiFiDirectManager(this, this);
@@ -187,7 +159,6 @@ public class ChatActivity extends Activity implements PeerDiscoveryListener, Mes
         );
 
         registerReceiver(receiver, intentFilter);
-        System.out.println("Receiver registered");
 
         requestPermissionsIfNeeded();
 
@@ -198,8 +169,6 @@ public class ChatActivity extends Activity implements PeerDiscoveryListener, Mes
                     this,
                     Manifest.permission.NEARBY_WIFI_DEVICES)
                     == PackageManager.PERMISSION_GRANTED) {
-
-                System.out.println("Permission already granted - starting discovery");
                 wifiDirectManager.discoverPeers();
             }
 
@@ -209,13 +178,9 @@ public class ChatActivity extends Activity implements PeerDiscoveryListener, Mes
                     this,
                     Manifest.permission.ACCESS_FINE_LOCATION)
                     == PackageManager.PERMISSION_GRANTED) {
-
-                System.out.println("Permission already granted - starting discovery");
                 wifiDirectManager.discoverPeers();
             }
         }
-
-        System.out.println("ON CREATE FINISHED");
     }
 
     @Override
@@ -230,8 +195,6 @@ public class ChatActivity extends Activity implements PeerDiscoveryListener, Mes
                 grantResults
         );
 
-        System.out.println("onRequestPermissionsResult called");
-
         boolean allGranted = true;
 
         for (int result : grantResults) {
@@ -239,14 +202,11 @@ public class ChatActivity extends Activity implements PeerDiscoveryListener, Mes
             if (result != PackageManager.PERMISSION_GRANTED) {
 
                 allGranted = false;
-                System.out.println("Permission denied: " + result);
                 break;
             }
         }
 
         if (allGranted) {
-
-            System.out.println("Permissions granted - starting discovery");
             wifiDirectManager.discoverPeers();
         }
     }
@@ -319,6 +279,5 @@ public class ChatActivity extends Activity implements PeerDiscoveryListener, Mes
         super.onDestroy();
         unregisterReceiver(receiver);
         wifiDirectManager.disconnect();
-        System.out.println("Receiver unregistered");
     }
 }

@@ -28,29 +28,21 @@ public class ConnectionHandler implements MessageListener {
      */
     public void initialize(WifiP2pInfo info) {
         if (isInitialized) {
-            System.out.println("Connection already initialized");
             return;
         }
 
         if (!info.groupFormed) {
-            System.err.println("Group not formed yet");
             return;
         }
-
-        System.out.println("Initializing connection...");
-        System.out.println("Is Group Owner: " + info.isGroupOwner);
-        System.out.println("Group Owner Address: " + info.groupOwnerAddress);
 
         isGroupOwner = info.isGroupOwner;
 
         if (info.isGroupOwner) {
             // This device is the Group Owner - start server
-            System.out.println("Starting as SERVER (Group Owner)");
             server = new SocketServer(this);
             server.start();
         } else {
             // This device is client - connect to server
-            System.out.println("Starting as CLIENT (connecting to Group Owner)");
             client = new SocketClient(this);
             client.connect(info.groupOwnerAddress);
         }
@@ -64,25 +56,13 @@ public class ConnectionHandler implements MessageListener {
      * @param message The message to send
      */
     public void sendMessage(String message) {
-        System.out.println(
-                "ConnectionHandler.sendMessage(): "
-                        + message
-        );
-        System.out.println(
-                "isGroupOwner = "
-                        + isGroupOwner
-        );
         if (isGroupOwner) {
             if (server != null && server.isClientConnected()) {
                 server.sendMessage(message);
-            } else {
-                System.err.println("Server: no client connected");
             }
         } else {
             if (client != null && client.isConnected()) {
                 client.sendMessage(message);
-            } else {
-                System.err.println("Client: not connected to server");
             }
         }
     }
@@ -119,7 +99,6 @@ public class ConnectionHandler implements MessageListener {
 
     @Override
     public void onConnectionEstablished() {
-        System.out.println("Connection established");
         if (externalListener != null) {
             externalListener.onConnectionEstablished();
         }
@@ -127,7 +106,6 @@ public class ConnectionHandler implements MessageListener {
 
     @Override
     public void onConnectionClosed() {
-        System.out.println("Connection closed");
         if (externalListener != null) {
             externalListener.onConnectionClosed();
         }
@@ -135,7 +113,6 @@ public class ConnectionHandler implements MessageListener {
 
     @Override
     public void onError(String error) {
-        System.err.println("Connection error: " + error);
         if (externalListener != null) {
             externalListener.onError(error);
         }

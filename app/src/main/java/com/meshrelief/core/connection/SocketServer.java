@@ -30,7 +30,6 @@ public class SocketServer {
      */
     public void start() {
         if (isRunning) {
-            System.out.println("Server already running");
             return;
         }
 
@@ -38,12 +37,9 @@ public class SocketServer {
             try {
                 serverSocket = new ServerSocket(PORT);
                 isRunning = true;
-                System.out.println("ServerSocket started on port " + PORT);
-                System.out.println("Waiting for client connection...");
 
                 // Accept one client connection (2-device only)
                 clientSocket = serverSocket.accept();
-                System.out.println("Client connected from " + clientSocket.getInetAddress());
 
                 // Setup reader and writer for bidirectional communication
                 writer = new PrintWriter(clientSocket.getOutputStream(), true);
@@ -58,23 +54,19 @@ public class SocketServer {
                 // Read messages from client in a loop
                 String messageFromClient;
                 while ((messageFromClient = reader.readLine()) != null && isRunning) {
-                    System.out.println("MESSAGE RECEIVED: " + messageFromClient);
                     if (messageListener != null) {
                         messageListener.onMessageReceived(messageFromClient);
                     }
                 }
 
-                System.out.println("Client disconnected");
                 if (messageListener != null) {
                     messageListener.onConnectionClosed();
                 }
 
             } catch (Exception e) {
-                System.err.println("Server error: " + e.getMessage());
                 if (messageListener != null) {
                     messageListener.onError(e.getMessage());
                 }
-                e.printStackTrace();
             } finally {
                 stop();
             }
@@ -92,26 +84,14 @@ public class SocketServer {
         new Thread(() -> {
 
             if (!isRunning || writer == null) {
-
-                System.err.println(
-                        "Client not connected"
-                );
-
                 return;
             }
 
             try {
 
                 writer.println(message);
-
-                System.out.println(
-                        "MESSAGE SENT: "
-                                + message
-                );
-
             } catch (Exception e) {
-
-                e.printStackTrace();
+                // Ignore send failures; connection lifecycle handles user-facing errors.
             }
 
         }).start();
@@ -127,9 +107,7 @@ public class SocketServer {
             if (writer != null) writer.close();
             if (clientSocket != null && !clientSocket.isClosed()) clientSocket.close();
             if (serverSocket != null && !serverSocket.isClosed()) serverSocket.close();
-        } catch (Exception e) {
-            System.err.println("Error closing server: " + e.getMessage());
-        }
+        } catch (Exception e) {}
     }
 
     public boolean isRunning() {
