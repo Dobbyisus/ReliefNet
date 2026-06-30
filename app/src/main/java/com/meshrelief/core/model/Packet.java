@@ -6,27 +6,38 @@ public class Packet {
     private final String destinationId; // null = broadcast
     private int ttl;
     private final long timestamp;
+    private final PacketType type;
     private final byte[] payload;
 
-    public Packet(String packetId, String sourceId, String destinationId, int ttl, long timestamp, byte[] payload) {
+    public Packet(
+            String packetId,
+            String sourceId,
+            String destinationId,
+            int ttl,
+            long timestamp,
+            PacketType type,
+            byte[] payload) {
+
         this.packetId = packetId;
         this.sourceId = sourceId;
         this.destinationId = destinationId;
         this.ttl = ttl;
         this.timestamp = timestamp;
+        this.type = type;
         this.payload = payload;
     }
 
     public Packet copy() {
-    return new Packet(
-        this.packetId,
-        this.sourceId,
-        this.destinationId,
-        this.ttl,
-        this.timestamp,
-        this.payload.clone()   // IMPORTANT: deep copy
-    );
-}
+        return new Packet(
+                this.packetId,
+                this.sourceId,
+                this.destinationId,
+                this.ttl,
+                this.timestamp,
+                this.type,
+                this.payload != null ? this.payload.clone() : null
+        );
+    }
 
     public String getPacketId() {
         return packetId;
@@ -50,6 +61,10 @@ public class Packet {
 
     public long getTimestamp() {
         return timestamp;
+    }
+
+    public PacketType getType() {
+        return type;
     }
 
     public byte[] getPayload() {

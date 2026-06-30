@@ -1,25 +1,29 @@
 package com.meshrelief.core.connection;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
+import com.meshrelief.core.model.Packet;
+import com.meshrelief.core.model.PacketSerializer;
+
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.EOFException;
 import java.net.ServerSocket;
 import java.net.Socket;
 
 /**
  * Bidirectional server socket for 2-device P2P.
- * Accepts one client connection and can send/receive messages.
+ * Accepts one client connection and can send/receive packets.
  */
 public class SocketServer {
 
     private static final int PORT = 8888;
+
     private ServerSocket serverSocket;
     private Socket clientSocket;
-    private PrintWriter writer;
-    private BufferedReader reader;
+    private DataOutputStream writer;
+    private DataInputStream reader;
     private boolean isRunning = false;
     private Thread serverThread;
-    private MessageListener messageListener;
+    private final MessageListener messageListener;
 
     public SocketServer(MessageListener messageListener) {
         this.messageListener = messageListener;
@@ -38,36 +42,34 @@ public class SocketServer {
                 serverSocket = new ServerSocket(PORT);
                 isRunning = true;
 
-                // Accept one client connection (2-device only)
                 clientSocket = serverSocket.accept();
-
-                // Setup reader and writer for bidirectional communication
-                writer = new PrintWriter(clientSocket.getOutputStream(), true);
-                reader = new BufferedReader(
-                        new InputStreamReader(clientSocket.getInputStream())
-                );
+                writer = new DataOutputStream(clientSocket.getOutputStream());
+                reader = new DataInputStream(clientSocket.getInputStream());
 
                 if (messageListener != null) {
                     messageListener.onConnectionEstablished();
                 }
 
-                // Read messages from client in a loop
-                String messageFromClient;
-                while ((messageFromClient = reader.readLine()) != null && isRunning) {
+                while (isRunning) {
+                    int packetLength = reader.readInt();
+                    byte[] packetBytes = new byte[packetLength];
+                    reader.readFully(packetBytes);
+                    Packet packet = PacketSerializer.deserialize(packetBytes);
+
                     if (messageListener != null) {
-                        messageListener.onMessageReceived(messageFromClient);
+                        messageListener.onPacketReceived(packet, packet.getSourceId());
                     }
                 }
-
-                if (messageListener != null) {
-                    messageListener.onConnectionClosed();
-                }
-
+            } catch (EOFException e) {
+                // Peer closed connection.
             } catch (Exception e) {
                 if (messageListener != null) {
                     messageListener.onError(e.getMessage());
                 }
             } finally {
+                if (messageListener != null) {
+                    messageListener.onConnectionClosed();
+                }
                 stop();
             }
         });
@@ -77,23 +79,24 @@ public class SocketServer {
     }
 
     /**
-     * Sends a message to the connected client.
+     * Sends a packet to the connected client.
      */
-    public void sendMessage(String message) {
-
+    public void sendPacket(Packet packet) {
         new Thread(() -> {
-
             if (!isRunning || writer == null) {
                 return;
             }
 
             try {
-
-                writer.println(message);
+                byte[] packetBytes = PacketSerializer.serialize(packet);
+                synchronized (writer) {
+                    writer.writeInt(packetBytes.length);
+                    writer.write(packetBytes);
+                    writer.flush();
+                }
             } catch (Exception e) {
                 // Ignore send failures; connection lifecycle handles user-facing errors.
             }
-
         }).start();
     }
 

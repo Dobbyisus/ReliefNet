@@ -2,6 +2,8 @@ package com.meshrelief.core.connection;
 
 import android.net.wifi.p2p.WifiP2pInfo;
 
+import com.meshrelief.core.model.Packet;
+
 /**
  * Manages socket connections for 2-device P2P communication.
  * Decides role (server or client) based on Group Owner status.
@@ -53,16 +55,16 @@ public class ConnectionHandler implements MessageListener {
     /**
      * Sends a message through the appropriate socket.
      *
-     * @param message The message to send
+     * @param packet The packet to send
      */
-    public void sendMessage(String message) {
+    public void sendPacket(Packet packet) {
         if (isGroupOwner) {
             if (server != null && server.isClientConnected()) {
-                server.sendMessage(message);
+                server.sendPacket(packet);
             }
         } else {
             if (client != null && client.isConnected()) {
-                client.sendMessage(message);
+                client.sendPacket(packet);
             }
         }
     }
@@ -91,9 +93,9 @@ public class ConnectionHandler implements MessageListener {
 
     // MessageListener callbacks - forward to external listener
     @Override
-    public void onMessageReceived(String message) {
+    public void onPacketReceived(Packet packet, String senderId) {
         if (externalListener != null) {
-            externalListener.onMessageReceived(message);
+            externalListener.onPacketReceived(packet, senderId);
         }
     }
 

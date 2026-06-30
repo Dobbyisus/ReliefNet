@@ -13,48 +13,38 @@ import androidx.core.app.ActivityCompat;
 
 import com.meshrelief.core.connection.ConnectionHandler;
 import com.meshrelief.core.connection.MessageListener;
+import com.meshrelief.core.mesh.PacketSender;
+import com.meshrelief.core.model.Packet;
 
 public class WiFiDirectManager
-        implements WifiP2pManager.ConnectionInfoListener {
+        implements WifiP2pManager.ConnectionInfoListener, PacketSender {
 
-    private WifiP2pManager manager;
-    private WifiP2pManager.Channel channel;
-    private Context context;
-    private ConnectionHandler connectionHandler;
-    private MessageListener messageListener;
+    private final WifiP2pManager manager;
+    private final WifiP2pManager.Channel channel;
+    private final Context context;
+    private final ConnectionHandler connectionHandler;
 
     public WiFiDirectManager(Context context, MessageListener messageListener) {
-
         this.context = context;
-        this.messageListener = messageListener;
-
-        manager = (WifiP2pManager)
-                context.getSystemService(
-                        Context.WIFI_P2P_SERVICE
-                );
-
-        channel = manager.initialize(
+        this.manager = (WifiP2pManager)
+                context.getSystemService(Context.WIFI_P2P_SERVICE);
+        this.channel = manager.initialize(
                 context,
                 context.getMainLooper(),
                 null
         );
-
         this.connectionHandler = new ConnectionHandler(messageListener);
     }
 
     public void discoverPeers() {
-        if (Build.VERSION.SDK_INT
-                >= Build.VERSION_CODES.TIRAMISU) {
-
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ActivityCompat.checkSelfPermission(
                     context,
                     Manifest.permission.NEARBY_WIFI_DEVICES)
                     != PackageManager.PERMISSION_GRANTED) {
                 return;
             }
-
         } else {
-
             if (ActivityCompat.checkSelfPermission(
                     context,
                     Manifest.permission.ACCESS_FINE_LOCATION)
@@ -66,7 +56,6 @@ public class WiFiDirectManager
         manager.discoverPeers(
                 channel,
                 new WifiP2pManager.ActionListener() {
-
                     @Override
                     public void onSuccess() {}
 
@@ -79,17 +68,13 @@ public class WiFiDirectManager
     public void connect(WifiP2pDevice device) {
         boolean permissionGranted;
 
-        if (Build.VERSION.SDK_INT
-                >= Build.VERSION_CODES.TIRAMISU) {
-
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissionGranted =
                     ActivityCompat.checkSelfPermission(
                             context,
                             Manifest.permission.NEARBY_WIFI_DEVICES)
                             == PackageManager.PERMISSION_GRANTED;
-
         } else {
-
             permissionGranted =
                     ActivityCompat.checkSelfPermission(
                             context,
@@ -97,25 +82,17 @@ public class WiFiDirectManager
                             == PackageManager.PERMISSION_GRANTED;
         }
 
-        if (!permissionGranted) {
+        if (!permissionGranted || device == null) {
             return;
         }
 
-        if (device == null) {
-            return;
-        }
-
-        WifiP2pConfig config =
-                new WifiP2pConfig();
-
-        config.deviceAddress =
-                device.deviceAddress;
+        WifiP2pConfig config = new WifiP2pConfig();
+        config.deviceAddress = device.deviceAddress;
 
         manager.connect(
                 channel,
                 config,
                 new WifiP2pManager.ActionListener() {
-
                     @Override
                     public void onSuccess() {}
 
@@ -126,31 +103,22 @@ public class WiFiDirectManager
     }
 
     public void requestConnectionInfo() {
-        manager.requestConnectionInfo(
-                channel,
-                this
-        );
+        manager.requestConnectionInfo(channel, this);
     }
 
     @Override
-    public void onConnectionInfoAvailable(
-            WifiP2pInfo info) {
-        // Initialize socket connection based on role
+    public void onConnectionInfoAvailable(WifiP2pInfo info) {
         if (connectionHandler != null) {
             connectionHandler.initialize(info);
         }
     }
 
     public void disconnect() {
-
-        if (connectionHandler != null) {
-            connectionHandler.cleanup();
-        }
+        connectionHandler.cleanup();
 
         manager.removeGroup(
                 channel,
                 new WifiP2pManager.ActionListener() {
-
                     @Override
                     public void onSuccess() {}
 
@@ -172,23 +140,17 @@ public class WiFiDirectManager
         return connectionHandler;
     }
 
-    /**
-     * Sends a message to the connected peer.
-     *
-     * @param message The message to send
-     */
-    public void sendMessage(String message) {
-        if (connectionHandler != null) {
-            connectionHandler.sendMessage(message);
-        }
+    @Override
+    public void sendPacket(Packet packet) {
+        connectionHandler.sendPacket(packet);
     }
 
-    /**
-     * Checks if a peer connection is established and ready.
-     *
-     * @return true if socket communication is ready
-     */
     public boolean isConnectionReady() {
-        return connectionHandler != null && connectionHandler.isReady();
+        return connectionHandler.isReady();
+    }
+
+    @Override
+    public boolean isReady() {
+        return isConnectionReady();
     }
 }

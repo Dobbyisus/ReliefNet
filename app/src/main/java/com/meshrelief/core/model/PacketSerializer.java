@@ -22,7 +22,7 @@ import java.nio.charset.StandardCharsets;
  *   PAYLOAD (variable bytes)
  */
 public class PacketSerializer {
-    private static final byte FORMAT_VERSION = 0x01;
+    private static final byte FORMAT_VERSION = 0x02;
     private static final int MAX_STRING_LENGTH = 1024; // 1KB max for IDs
     private static final int MAX_PAYLOAD_SIZE = 1024 * 1024; // 1MB max payload
 
@@ -57,6 +57,8 @@ public class PacketSerializer {
             } else {
                 dos.writeByte(0x00); // No destination (broadcast)
             }
+
+            dos.writeByte(packet.getType().getCode());
 
             // Write TTL
             dos.writeByte(packet.getTtl());
@@ -122,6 +124,8 @@ public class PacketSerializer {
                 destinationId = readString(dis, "Destination ID");
             }
 
+            PacketType type = PacketType.fromCode(dis.readByte());
+
             // Read TTL
             int ttl = dis.readUnsignedByte();
 
@@ -144,7 +148,7 @@ public class PacketSerializer {
                 dis.readFully(payload);
             }
 
-            return new Packet(packetId, sourceId, destinationId, ttl, timestamp, payload);
+            return new Packet(packetId, sourceId, destinationId, ttl, timestamp, type, payload);
 
         } catch (SerializationException e) {
             throw e;
@@ -231,6 +235,9 @@ public class PacketSerializer {
         if (packet.getDestinationId() != null) {
             size += 2 + packet.getDestinationId().getBytes(StandardCharsets.UTF_8).length;
         }
+
+        // Packet type: 1 byte
+        size += 1;
 
         // TTL: 1 byte
         size += 1;
